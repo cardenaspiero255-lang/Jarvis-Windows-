@@ -55,6 +55,27 @@ class RouterTests(unittest.TestCase):
         kind, _ = tr.route_task("browser", "open notepad")
         self.assertEqual(kind, "computer")
 
+    def test_installed_chatgpt_is_preferred_over_github_web_context(self):
+        INSTALLED.append("ChatGPT")
+        try:
+            kind, why = tr.route_task("browser",
+                "dile a ChatGPT que revise el PR 202 de GameHub Ultra en GitHub")
+            self.assertEqual(kind, "computer")
+            self.assertIn("ChatGPT", why)
+        finally:
+            INSTALLED.remove("ChatGPT")
+
+    def test_missing_chatgpt_application_opens_the_web(self):
+        self.assertEqual(tr.route_task("computer", "abre ChatGPT")[0], "browser")
+
+    def test_explicit_spanish_browser_wins_even_when_chatgpt_installed(self):
+        INSTALLED.append("ChatGPT")
+        try:
+            self.assertEqual(tr.route_task("computer",
+                "en el navegador dile a ChatGPT que revise el PR 202")[0], "browser")
+        finally:
+            INSTALLED.remove("ChatGPT")
+
     # ── Web stays web ──
     def test_an_explicit_url_is_browser_work(self):
         self.assertEqual(tr.route_task("computer", "go to https://example.com")[0], "browser")

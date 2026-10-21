@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import re
 
+from chatgpt_surface import explicit_browser_requested, installed_chatgpt_target
+
 # Sites/services that are the WEB even when a same-named app exists (a YouTube or
 # Gmail "app" is usually a browser shortcut, and driving the real site is what the
 # user meant). Checked before the installed-app lookup for exactly that reason.
@@ -136,9 +138,20 @@ def route_task(kind: str, goal: str) -> "tuple[str, str]":
     low = g.lower()
 
     # 1. An explicit URL or an outright "in the browser" is decisive.
-    if _URL_RE.search(g) or _WEB_PHRASE_RE.search(g):
+    if _URL_RE.search(g) or _WEB_PHRASE_RE.search(g) or explicit_browser_requested(g):
         return "browser", ("the goal names a URL or the browser itself"
                            if kind != "browser" else "")
+
+    # An explicit ChatGPT request goes to the installed app when available.
+    # This check precedes generic website names such as GitHub in the task context.
+    try:
+        from actions import app_launcher
+        installed_chatgpt = installed_chatgpt_target(g, app_launcher.installed_app_name)
+    except Exception:
+        installed_chatgpt = ""
+    if installed_chatgpt:
+        return "computer", (f"“{installed_chatgpt}” is installed on this PC"
+                            if kind != "computer" else "")
 
     # 2. A named web service beats a same-named installed shortcut.
     for svc in _WEB_SERVICES:
