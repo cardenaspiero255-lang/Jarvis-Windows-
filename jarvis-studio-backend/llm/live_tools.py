@@ -225,6 +225,23 @@ def function_declarations(places_ok: "bool | None" = None,
             {"name": _str("App to close, e.g. 'chrome', 'spotify'.")}, ["name"]),
         _fn("open_website", "Open a URL in the default web browser.",
             {"url": _str("The full URL or domain to open.")}, ["url"]),
+        _fn("github_pr_review",
+            "Inspect a real GitHub pull request: fetch the changed-code diff, "
+            "heuristic risk indicators, latest commit checks and GitHub Actions "
+            "runs. Review the returned diff critically and distinguish CI status "
+            "from your own findings. This is read-only and does NOT execute tests.",
+            {"repo": _str("Exact GitHub repository owner/name."),
+             "pr": {"type": "INTEGER", "description": "Pull request number."}},
+            ["repo", "pr"]),
+        _fn("github_pr_rerun_ci",
+            "Request a rerun of an existing GitHub Actions workflow for a PR. "
+            "Requires on-screen user approval, GitHub Actions write access and "
+            "a workflow run ID returned by github_pr_review. Tests execute on "
+            "GitHub, not on this PC. Never claim success until new check results arrive.",
+            {"repo": _str("Exact GitHub repository owner/name."),
+             "pr": {"type": "INTEGER", "description": "Pull request number."},
+             "run_id": {"type": "INTEGER", "description": "Existing Actions run ID."}},
+            ["repo", "pr", "run_id"]),
         _fn("set_volume", "Set the system master volume to a specific level.",
             {"level": {"type": "INTEGER", "description": "Volume from 0 to 100."}}, ["level"]),
         _fn("system_control",
@@ -555,6 +572,9 @@ def _skill_tools() -> list:
 # session still gets function_declarations() whole — it is sent once per session.
 
 GROUPS = {
+    "github": ("Read real GitHub pull requests, examine code diffs and CI checks; "
+               "rerun a specific PR workflow only after user approval",
+               ("github_pr_review", "github_pr_rerun_ci")),
     "files": ("Files and folders: read a file, PDF or the clipboard, list or open a "
               "folder, open a file JARVIS saved, save text as a PDF, delete a file",
               ("read_file", "list_directory", "read_pdf", "text_to_pdf", "open_folder",
@@ -580,6 +600,8 @@ GROUPS = {
 # Cheap word cues that pre-load a group, so the common turn never pays load_tools.
 # Over-matching only costs tokens; under-matching costs a round trip, so be generous.
 _CUES = {
+    "github": r"\\b(github|git hub|pull request|pull requests|PR[ #]+[0-9]+|repo|repositorio|"
+              r"revisa (?:el )?pr|review (?:the )?pr|checks?|CI|workflow)\\b",
     "files": r"\b(files?|folders?|director(?:y|ies)|pdfs?|documents?|downloads|desktop|"
              r"clipboard|copied|paste|txt|csv|delete|recycle|saved|the recording|"
              r"the screenshot|read (?:the|my|this|that))\b",
@@ -718,6 +740,11 @@ def turn_declarations() -> list:
 
 # function name → builder that returns the actions.run_action() spec dict.
 _SPEC = {
+    "github_pr_review": lambda a: {"type": "github_pr_inspect",
+                                   "repo": a.get("repo", ""), "pr": a.get("pr", "")},
+    "github_pr_rerun_ci": lambda a: {"type": "github_ci_rerun",
+                                     "repo": a.get("repo", ""), "pr": a.get("pr", ""),
+                                     "run_id": a.get("run_id", "")},
     "take_screenshot":   lambda a: {"type": "screenshot"},
     "open_application":  lambda a: {"type": "open_app", "target": a.get("name", "")},
     "close_application": lambda a: {"type": "close_app", "target": a.get("name", "")},
