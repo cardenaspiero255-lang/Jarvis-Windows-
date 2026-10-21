@@ -63,6 +63,17 @@ class GitHubReviewTests(unittest.TestCase):
         self.assertEqual(result["findings"][0]["kind"], "heuristic")
         self.assertNotIn("my-very-secret-value", str(result))
 
+    def test_removed_secrets_and_auth_headers_are_also_redacted(self):
+        api = fixture()
+        api.data["/repos/octo/app/pulls/7/files?per_page=100&page=1"][0]["patch"] = (
+            "@@ -1 +1 @@\\n-password = 'removed-secret'\\n"
+            "+Authorization: Bearer github_pat_secret\\n"
+            " access_token = 'context-secret'\\n")
+        report = inspect_pull_request("octo/app", 7, api)
+        self.assertNotIn("removed-secret", str(report))
+        self.assertNotIn("github_pat_secret", str(report))
+        self.assertNotIn("context-secret", str(report))
+
     def test_rejects_repo_and_number_injection(self):
         for name in ("octo/app/../evil", "octo/evil?x=y", "octo;rm/app", ""):
             with self.assertRaises(ValueError):
