@@ -204,6 +204,25 @@ def model_evidence(report):
                 and 0 < finding["line"] < 1000000
             ]
         },
+        "language_analysis": {
+            "complete": bool((report.get("language_analysis") or {}).get("complete", False)),
+            "language_candidates": int((report.get("language_analysis") or {}).get("language_candidates") or 0),
+            "files_analyzed": int((report.get("language_analysis") or {}).get("files_analyzed") or 0),
+            "unavailable_files": int((report.get("language_analysis") or {}).get("unavailable_files") or 0),
+            "by_language": {name: int(((report.get("language_analysis") or {}).get("by_language") or {}).get(name) or 0)
+                            for name in ("javascript", "typescript", "kotlin")},
+            "findings": [
+                {"rule": item["rule"], "file": _safe_file_name(item.get("file")),
+                 "line": item["line"], "kind": "lexical heuristic"}
+                for item in (report.get("language_analysis") or {}).get("findings", [])[:60]
+                if item.get("rule") in (
+                    "js-shell-exec", "js-dynamic-eval", "js-dynamic-function",
+                    "js-html-injection", "js-tls-disabled", "kotlin-runtime-exec",
+                    "kotlin-process-builder", "kotlin-object-input")
+                and isinstance(item.get("line"), int)
+                and 0 < item["line"] < 1000000
+            ],
+        },
         "workflow_runs": [
             {"id": run.get("id") if isinstance(run.get("id"), int) else None,
              "status": run.get("status") if run.get("status") in ("queued", "in_progress", "completed") else "unknown",
