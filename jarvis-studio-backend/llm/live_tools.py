@@ -231,12 +231,15 @@ def function_declarations(places_ok: "bool | None" = None,
             "installation or system change. Use for offline AI troubles.",
             ),
         _fn("github_pr_review",
-            "Inspect a real GitHub pull request: fetch the changed-code diff, "
-            "heuristic risk indicators, latest commit checks and GitHub Actions "
-            "runs. Review the returned diff critically and distinguish CI status "
-            "from your own findings. This is read-only and does NOT execute tests.",
+            "Inspect a GitHub PR under user approval. Returns normalized static "
+            "findings, coverage and actual CI state, NEVER raw PR source to the "
+            "model. Set deep=true for a bounded Python AST scan of changed lines "
+            "at the immutable PR head; analysis never executes PR code. "
+            "Do not claim exhaustive coverage if files were skipped.",
             {"repo": _str("Exact GitHub repository owner/name."),
-             "pr": {"type": "INTEGER", "description": "Pull request number."}},
+             "pr": {"type": "INTEGER", "description": "Pull request number."},
+             "deep": {"type": "BOOLEAN", "description":
+                      "True to run bounded Python AST semantic checks (read-only)."}},
             ["repo", "pr"]),
         _fn("github_pr_rerun_ci",
             "Request a rerun of an existing GitHub Actions workflow for a PR. "
@@ -751,7 +754,8 @@ def turn_declarations() -> list:
 _SPEC = {
     "check_local_ai": lambda a: {"type": "ollama_diagnostics"},
     "github_pr_review": lambda a: {"type": "github_pr_inspect",
-                                   "repo": a.get("repo", ""), "pr": a.get("pr", "")},
+                                   "repo": a.get("repo", ""), "pr": a.get("pr", ""),
+                                   "deep": a.get("deep") is True},
     "github_pr_rerun_ci": lambda a: {"type": "github_ci_rerun",
                                      "repo": a.get("repo", ""), "pr": a.get("pr", ""),
                                      "run_id": a.get("run_id", "")},
