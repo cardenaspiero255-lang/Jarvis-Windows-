@@ -51,6 +51,23 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(kind, "computer")
         self.assertIn("Notepad", why)
 
+    def test_spanish_desktop_command_uses_installed_app(self):
+        self.assertEqual(tr.route_task("browser", "abre Notepad y escribe hola")[0],
+                         "computer")
+
+    def test_spanish_unquoted_payload_does_not_force_web(self):
+        self.assertEqual(tr.route_task(
+            "browser", "abre Notepad y escribe una nota sobre YouTube")[0],
+            "computer")
+
+    def test_spanish_desktop_only_phrases(self):
+        self.assertEqual(tr.route_task("browser", "abre el administrador de tareas")[0],
+                         "computer")
+
+    def test_spanish_explicit_browser_dominates_installed_app(self):
+        self.assertEqual(tr.route_task("computer",
+            "en el navegador abre Notepad")[0], "browser")
+
     def test_bare_open_notepad_goes_to_the_desktop(self):
         kind, _ = tr.route_task("browser", "open notepad")
         self.assertEqual(kind, "computer")
