@@ -8,6 +8,7 @@ import sys
 
 from github_pr_agent import GitHubAPI, inspect_pull_request, model_evidence
 from github_pr_semantic import analyze_pull_request_python
+from github_pr_multilang import inspect_multilang_pr
 
 
 class ReadOnlyGitHub(GitHubAPI):
@@ -34,6 +35,8 @@ def main():
         raise RuntimeError("Live GitHub returned no changed files or commit checks.")
     semantic = analyze_pull_request_python(repo, pr_number, api=api)
     report["semantic_analysis"] = semantic
+    multi = inspect_multilang_pr(repo, pr_number, api=api)
+    report["language_analysis"] = multi
     evidence = model_evidence(report)
     prohibited = ("diff_excerpt", "title", "source_code", "raw_patch", "raw_source")
     if any(k in evidence for k in prohibited):
@@ -42,12 +45,22 @@ def main():
         raise RuntimeError("Evidence refers to the wrong commit.")
     if semantic["python_candidates"] < 1 or semantic["files_analyzed"] < 1:
         raise RuntimeError("The live PR had no analyzable Python changes.")
+    if multi["language_candidates"] < 1 or multi["files_analyzed"] < 1:
+        raise RuntimeError("The live PR had no analyzable JS/TS/Kotlin changes.")
+    if multi["files_analyzed"] > 12 or len(multi["findings"]) > 60:
+        raise RuntimeError("JS/TS/Kotlin scanning exceeded its bounded budget.")
+    if not all(name in evidence["language_analysis"]["by_language"]
+               for name in ("javascript", "typescript", "kotlin")):
+        raise RuntimeError("Language evidence missing required counters.")
     if semantic["files_analyzed"] > 12 or len(semantic["findings"]) > 60:
         raise RuntimeError("The AST analysis escaped its resource budget.")
     print("PASS: live authenticated, read-only GitHub PR inspection")
     print("HEAD verified; files checked:", report["files_inspected"],
           "incomplete coverage:", not report["file_coverage_complete"],
           "check count:", len(report["checks"]))
+    print("JS/TS/Kotlin lexical files analyzed:", multi["files_analyzed"],
+          "candidates:", multi["language_candidates"],
+          "complete:", multi["complete"])
     print("AST Python files analyzed:", semantic["files_analyzed"],
           "AST heuristic findings:", len(semantic["findings"]),
           "AST complete:", semantic["complete"])
