@@ -225,6 +225,11 @@ def function_declarations(places_ok: "bool | None" = None,
             {"name": _str("App to close, e.g. 'chrome', 'spotify'.")}, ["name"]),
         _fn("open_website", "Open a URL in the default web browser.",
             {"url": _str("The full URL or domain to open.")}, ["url"]),
+        _fn("check_local_ai",
+            "Diagnose whether the configured local Ollama server is reachable and "
+            "the selected model is actually installed. No cloud call, model "
+            "installation or system change. Use for offline AI troubles.",
+            ),
         _fn("github_pr_review",
             "Inspect a real GitHub pull request: fetch the changed-code diff, "
             "heuristic risk indicators, latest commit checks and GitHub Actions "
@@ -572,6 +577,8 @@ def _skill_tools() -> list:
 # session still gets function_declarations() whole — it is sent once per session.
 
 GROUPS = {
+    "local_ai": ("Check the health of locally configured Ollama models without "
+                 "downloading or executing anything", ("check_local_ai",)),
     "github": ("Read real GitHub pull requests, examine code diffs and CI checks; "
                "rerun a specific PR workflow only after user approval",
                ("github_pr_review", "github_pr_rerun_ci")),
@@ -600,6 +607,8 @@ GROUPS = {
 # Cheap word cues that pre-load a group, so the common turn never pays load_tools.
 # Over-matching only costs tokens; under-matching costs a round trip, so be generous.
 _CUES = {
+    "local_ai": r"\b(ollama|modelo local|ia local|inteligencia artificial local|"
+                r"sin internet|offline|local model|check local ai)\b",
     "github": r"\b(github|git hub|pull request|pull requests|PR[ #]+[0-9]+|repo|repositorio|"
               r"revisa (?:el )?pr|review (?:the )?pr|checks?|CI|workflow)\b",
     "files": r"\b(files?|folders?|director(?:y|ies)|pdfs?|documents?|downloads|desktop|"
@@ -740,6 +749,7 @@ def turn_declarations() -> list:
 
 # function name → builder that returns the actions.run_action() spec dict.
 _SPEC = {
+    "check_local_ai": lambda a: {"type": "ollama_diagnostics"},
     "github_pr_review": lambda a: {"type": "github_pr_inspect",
                                    "repo": a.get("repo", ""), "pr": a.get("pr", "")},
     "github_pr_rerun_ci": lambda a: {"type": "github_ci_rerun",
