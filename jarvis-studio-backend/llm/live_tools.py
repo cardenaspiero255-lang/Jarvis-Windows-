@@ -600,8 +600,8 @@ GROUPS = {
 # Cheap word cues that pre-load a group, so the common turn never pays load_tools.
 # Over-matching only costs tokens; under-matching costs a round trip, so be generous.
 _CUES = {
-    "github": r"\\b(github|git hub|pull request|pull requests|PR[ #]+[0-9]+|repo|repositorio|"
-              r"revisa (?:el )?pr|review (?:the )?pr|checks?|CI|workflow)\\b",
+    "github": r"\b(github|git hub|pull request|pull requests|PR[ #]+[0-9]+|repo|repositorio|"
+              r"revisa (?:el )?pr|review (?:the )?pr|checks?|CI|workflow)\b",
     "files": r"\b(files?|folders?|director(?:y|ies)|pdfs?|documents?|downloads|desktop|"
              r"clipboard|copied|paste|txt|csv|delete|recycle|saved|the recording|"
              r"the screenshot|read (?:the|my|this|that))\b",
