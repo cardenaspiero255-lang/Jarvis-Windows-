@@ -233,7 +233,12 @@ def inspect_pull_request(repo, number, api=None):
     # A missing GitHub patch (binary / oversized / inaccessible) means code
     # coverage is incomplete even though we can still report CI and metadata.
     uninspected = max(0, declared_count - len(sample))
-    missing_patches = sum(1 for item in sample if not isinstance(item.get("patch"), str))
+    missing_patches = sum(1 for item in sample
+                          if not isinstance(item.get("patch"), str)
+                          or not item.get("patch", "").strip())
+    # If the last permitted page is full and GitHub did not supply a count,
+    # we cannot know whether a fifth page exists.
+    unknown_tail = (not declared_count and len(sample) == _MAX_FILES)
     text_parts = []
     injection_count = 0
     for file in sample:
@@ -243,9 +248,10 @@ def inspect_pull_request(repo, number, api=None):
         text_parts.append(f"FILE {_safe_file_name(file.get('filename'))}\n{safe_patch}\n")
     all_diff = "\n".join(text_parts)
     diff_truncated = (len(all_diff) > _MAX_DIFF or uninspected > 0
-                      or missing_patches > 0)
+                      or missing_patches > 0 or unknown_tail)
     diff_excerpt = all_diff[:_MAX_DIFF]
-    coverage_complete = uninspected == 0 and missing_patches == 0
+    coverage_complete = (uninspected == 0 and missing_patches == 0
+                         and not unknown_tail)
     ci_error = ""
     checks, runs = [], []
     try:
