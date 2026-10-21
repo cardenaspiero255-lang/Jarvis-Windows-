@@ -23,20 +23,20 @@ _MAX_DIFF = 24000
 # GitHub can return at most 100 files per page. Never silently skip later pages.
 _MAX_FILES = 400
 _MAX_PAGES = 4
-_FILENAME = re.compile(r"^[a-zA-Z0-9_./\\-]{1,180}$")
+_FILENAME = re.compile(r"^[a-zA-Z0-9_./-]{1,180}$")
 # Indicators are intentionally conservative; no regex can guarantee secrets detection.
 _INJECTION = re.compile(
-    r"(?i)(?:\\[ACTION\\b|\\[/ACTION\\]|<\\|im_start\\|>|"
-    r"\\b(?:system|developer|assistant)\\s*:\\s*(?:ignore|override|run|execute)|"
-    r"\\bignore\\s+(?:(?:all|any)\\s+)?(?:previous|prior)\\s+"
-    r"(?:instructions|directions|rules)|\\bdisregard\\s+(?:previous|prior)|"
-    r"\\boverride\\s+(?:system|developer)\\s+(?:prompt|instructions))"
+    r"(?i)(?:\[ACTION\b|\[/ACTION\]|<\|im_start\|>|"
+    r"\b(?:system|developer|assistant)\s*:\s*(?:ignore|override|run|execute)|"
+    r"\bignore\s+(?:(?:all|any)\s+)?(?:previous|prior)\s+"
+    r"(?:instructions|directions|rules)|\bdisregard\s+(?:previous|prior)|"
+    r"\boverride\s+(?:system|developer)\s+(?:prompt|instructions))"
 )
 _SENSITIVE_VALUE = re.compile(
-    r"(?i)(?:\\bAKIA[0-9A-Z]{12,}\\b|\\b(?:sk-[A-Za-z0-9_-]{12,}|"
-    r"gh[pousr]_[A-Za-z0-9_]{12,}|github_pat_[A-Za-z0-9_]{12,})\\b|"
+    r"(?i)(?:\bAKIA[0-9A-Z]{12,}\b|\b(?:sk-[A-Za-z0-9_-]{12,}|"
+    r"gh[pousr]_[A-Za-z0-9_]{12,}|github_pat_[A-Za-z0-9_]{12,})\b|"
     r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|"
-    r"\\b(?:aws_access_key_id|client_secret|private_key|session_token)\\s*[:=])"
+    r"\b(?:aws_access_key_id|client_secret|private_key|session_token)\s*[:=])"
 )
 
 
