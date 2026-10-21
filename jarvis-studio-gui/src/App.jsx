@@ -4,6 +4,7 @@ import { JarvisHUD, DIRECTIONS } from "./hud/HudApp";
 import Settings from "./components/Settings";
 import Onboarding from "./components/Onboarding";
 import SetupProgress from "./components/SetupProgress";
+import PermissionDialog from "./components/PermissionDialog";
 import BootOverlay from "./components/BootOverlay";
 import Customize from "./components/Customize";
 import AgentActivity from "./components/AgentActivity";
@@ -602,27 +603,8 @@ export default function App() {
         <SetupProgress progress={setupProgress} onRepair={repairSetup} />
       )}
 
-      {/* ── Approve/Deny gate for dangerous actions ── */}
-      {permissionRequest && (
-        <div className="perm-overlay">
-          <div className="perm-dialog" role="alertdialog" aria-modal="true" aria-label="Permission required">
-            <div className="perm-icon"><Icon name="warning" size={34} stroke={1.4} /></div>
-            <div className="perm-kicker">Your approval is needed</div>
-            <div className="perm-desc">
-              JARVIS wants to <strong>{permissionRequest.description}</strong>.
-            </div>
-            <div className="perm-sub">This action needs your explicit approval.</div>
-            <div className="perm-actions">
-              <button className="perm-deny" onClick={() => respondPermission(permissionRequest.id, false)}>
-                Deny
-              </button>
-              <button className="perm-approve" onClick={() => respondPermission(permissionRequest.id, true)}>
-                Allow
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Approval remains explicit; denial is default for the keyboard. */}
+      <PermissionDialog request={permissionRequest} onRespond={respondPermission} />
 
       {/* ── Mid-task clarify: the autopilot needs one answer to proceed ── */}
       <ClarifyPrompt request={clarifyRequest} onRespond={respondClarify} />
