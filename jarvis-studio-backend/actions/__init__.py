@@ -199,6 +199,11 @@ def _local_permission(spec: dict) -> "Tuple[bool, str, str]":
     atype = str(spec.get("type", "")).lower().strip()
     target = spec.get("target") or spec.get("app") or spec.get("path") \
         or spec.get("query") or spec.get("command") or spec.get("name") or ""
+    # Rerunning CI executes workflow code on GitHub; require explicit approval.
+    # This remains gated even if an MCP server or desktop window was trusted.
+    if atype == "github_ci_rerun":
+        return True, "github_ci", (f"rerun GitHub Actions for {spec.get('repo', '')} "
+                                   f"PR #{spec.get('pr', '')}, run {spec.get('run_id', '')}")
     if atype in ("close_app", "close", "kill", "quit_app"):
         return True, "close_app", f"close {target or 'that app'}"
     if atype in ("open_app", "open", "launch"):
@@ -604,6 +609,26 @@ def _run_one(spec: dict) -> dict:
         or spec.get("query") or spec.get("command") or spec.get("text") \
         or spec.get("path") or spec.get("level") or spec.get("seconds") \
         or spec.get("name") or ""          # a tool call that misnames itself keeps its args
+
+    # ── GitHub PR analysis (read only) and approved GitHub-hosted CI ───────────
+    if atype in ("github_pr_inspect", "github_ci_rerun"):
+        import json as _json
+        from github_pr_agent import APIError, inspect_pull_request, rerun_workflow
+        repo = spec.get("repo", "")
+        pr = spec.get("pr", "")
+        try:
+            if atype == "github_pr_inspect":
+                report = inspect_pull_request(repo, pr)
+                details = _json.dumps(report, ensure_ascii=False, default=str)
+                return {"type": atype, "ok": True, "speak": "",
+                        "message": f"Loaded PR #{report['number']} from {report['repository']}; "
+                                   "analyzing the diff and actual CI results.",
+                        "feed_to_model": {"name": "untrusted GitHub PR evidence",
+                                          "content": details}}
+            outcome = rerun_workflow(repo, pr, spec.get("run_id", ""))
+            return {"type": atype, **outcome}
+        except (ValueError, APIError) as exc:
+            return {"type": atype, "ok": False, "message": str(exc)}
 
     # ── Launchers / window control ────────────────────────────────────────────
     if atype in ("open_app", "open", "launch"):
