@@ -638,10 +638,15 @@ def _run_one(spec: dict) -> dict:
         try:
             if atype == "github_pr_inspect":
                 report = inspect_pull_request(repo, pr)
+                if spec.get("deep") is True:
+                    from github_pr_semantic import analyze_pull_request_python
+                    report["semantic_analysis"] = analyze_pull_request_python(repo, pr)
                 details = _json.dumps(model_evidence(report), ensure_ascii=False)
                 return {"type": atype, "ok": True, "speak": "",
                         "message": f"Loaded PR #{report['number']} from {report['repository']}; "
-                                   "analyzing the diff and actual CI results.",
+                                   "reviewed normalized findings and CI status"
+                                   + (" with bounded Python AST checks." if spec.get("deep") is True
+                                      else "."),
                         "feed_to_model": {"name": "sanitized GitHub PR status and heuristic findings",
                                           "untrusted_source": True, "content": details}}
             outcome = rerun_workflow(repo, pr, spec.get("run_id", ""))
