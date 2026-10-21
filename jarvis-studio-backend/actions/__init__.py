@@ -199,6 +199,13 @@ def _local_permission(spec: dict) -> "Tuple[bool, str, str]":
     atype = str(spec.get("type", "")).lower().strip()
     target = spec.get("target") or spec.get("app") or spec.get("path") \
         or spec.get("query") or spec.get("command") or spec.get("name") or ""
+    # The user must approve even read-only PR inspection: metadata about private
+    # code and findings may be sent to the configured language model.
+    # Raw PR code is NEVER forwarded to that model.
+    if atype == "github_pr_inspect":
+        return True, "github_pr_read", (f"inspect GitHub PR #{spec.get('pr', '')} in "
+                                      f"{spec.get('repo', '')} and share only "
+                                      "sanitized findings/status with the AI")
     # Rerunning CI executes workflow code on GitHub; require explicit approval.
     # This remains gated even if an MCP server or desktop window was trusted.
     if atype == "github_ci_rerun":
@@ -624,18 +631,19 @@ def _run_one(spec: dict) -> dict:
     # ── GitHub PR analysis (read only) and approved GitHub-hosted CI ───────────
     if atype in ("github_pr_inspect", "github_ci_rerun"):
         import json as _json
-        from github_pr_agent import APIError, inspect_pull_request, rerun_workflow
+        from github_pr_agent import (APIError, inspect_pull_request, rerun_workflow,
+                                     model_evidence)
         repo = spec.get("repo", "")
         pr = spec.get("pr", "")
         try:
             if atype == "github_pr_inspect":
                 report = inspect_pull_request(repo, pr)
-                details = _json.dumps(report, ensure_ascii=False, default=str)
+                details = _json.dumps(model_evidence(report), ensure_ascii=False)
                 return {"type": atype, "ok": True, "speak": "",
                         "message": f"Loaded PR #{report['number']} from {report['repository']}; "
                                    "analyzing the diff and actual CI results.",
-                        "feed_to_model": {"name": "untrusted GitHub PR evidence",
-                                          "content": details}}
+                        "feed_to_model": {"name": "sanitized GitHub PR status and heuristic findings",
+                                          "untrusted_source": True, "content": details}}
             outcome = rerun_workflow(repo, pr, spec.get("run_id", ""))
             return {"type": atype, **outcome}
         except (ValueError, APIError) as exc:
