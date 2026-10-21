@@ -78,12 +78,20 @@ class SemanticAnalysisTests(unittest.TestCase):
 
     def test_budget_enforced_without_hiding_unanalyzed_files(self):
         files = [{"filename": f"x{i}.py", "status": "modified",
-                  "patch": "@@ -0,0 +1 @@\n+eval(abc)"} for i in range(20)]
-        api = API(files, {f"x{i}.py": "eval(abc)" for i in range(20)})
+                  "patch": "@@ -0,0 +1 @@\n+eval(abc)"} for i in range(31)]
+        api = API(files, {f"x{i}.py": "eval(abc)" for i in range(31)})
         report = analyze_pull_request_python("octo/app", 8, api)
-        self.assertLessEqual(report["files_analyzed"], 12)
+        self.assertLessEqual(report["files_analyzed"], 24)
         self.assertFalse(report["complete"])
         self.assertGreater(report["unavailable_files"], 0)
+
+    def test_budget_now_covers_twenty_four_python_files(self):
+        files = [{"filename": f"src/{i}.py", "status": "modified",
+                  "patch": "@@ -0,0 +1 @@\\n+eval(abc)"} for i in range(24)]
+        api = API(files, {f"src/{i}.py": "eval(abc)" for i in range(24)})
+        report = analyze_pull_request_python("octo/app", 8, api)
+        self.assertEqual(report["files_analyzed"], 24)
+        self.assertTrue(report["complete"])
 
     def test_bad_python_syntax_reported_not_dropped(self):
         files = [{"filename": "app.py", "status": "modified",
