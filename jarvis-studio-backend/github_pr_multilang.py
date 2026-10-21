@@ -9,7 +9,7 @@ import re
 from urllib.parse import quote
 from github_pr_semantic import changed_python_lines, _safe_path, _MAX_BYTES, _MAX_PATCH_BYTES
 
-_MAX_FILES = 12
+_MAX_FILES = 24
 _MAX_FINDINGS = 60
 _SHA = re.compile(r"^[0-9a-fA-F]{40}$")
 _REPO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$")
@@ -140,13 +140,25 @@ def inspect_multilang_pr(repo, number, api=None):
             break
     candidates = [entry for entry in files if
                   _language(entry.get("filename")) and entry.get("status") != "removed"]
+    # Spread the fixed budget across languages. GitHub lists paths in order,
+    # which could otherwise exhaust the budget on JS before a changed TS/KT file.
+    groups = {language: [] for language in ("javascript", "typescript", "kotlin")}
+    for entry in candidates:
+        groups[_language(entry.get("filename"))].append(entry)
+    selected = []
+    while len(selected) < _MAX_FILES and any(groups.values()):
+        for language in ("javascript", "typescript", "kotlin"):
+            if len(selected) >= _MAX_FILES:
+                break
+            if groups[language]:
+                selected.append(groups[language].pop(0))
     report = {
         "head_sha": sha, "language_candidates": len(candidates),
-        "files_analyzed": 0, "unavailable_files": max(0, len(candidates) - _MAX_FILES),
+        "files_analyzed": 0, "unavailable_files": max(0, len(candidates) - len(selected)),
         "by_language": {"javascript": 0, "typescript": 0, "kotlin": 0},
         "findings": [], "complete": False
     }
-    for file in candidates[:_MAX_FILES]:
+    for file in selected:
         path, patch = file.get("filename"), file.get("patch")
         if (not _safe_path(path) or not isinstance(patch, str)
                 or not patch.strip() or len(patch.encode("utf-8")) > _MAX_PATCH_BYTES
