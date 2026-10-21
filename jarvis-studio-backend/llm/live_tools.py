@@ -225,6 +225,11 @@ def function_declarations(places_ok: "bool | None" = None,
             {"name": _str("App to close, e.g. 'chrome', 'spotify'.")}, ["name"]),
         _fn("open_website", "Open a URL in the default web browser.",
             {"url": _str("The full URL or domain to open.")}, ["url"]),
+        _fn("test_local_ai_generation",
+            "With explicit user approval, test that the configured Ollama model "
+            "actually generates a bounded nonempty answer. Uses a fixed public "
+            "prompt, no conversation data, no local tools, and returns only "
+            "success and latency. Requires an installed selected model."),
         _fn("check_local_ai",
             "Diagnose whether the configured local Ollama server is reachable and "
             "the selected model is actually installed. No cloud call, model "
@@ -581,7 +586,7 @@ def _skill_tools() -> list:
 
 GROUPS = {
     "local_ai": ("Check the health of locally configured Ollama models without "
-                 "downloading or executing anything", ("check_local_ai",)),
+                 "downloading models", ("check_local_ai", "test_local_ai_generation")),
     "github": ("Read real GitHub pull requests, examine code diffs and CI checks; "
                "rerun a specific PR workflow only after user approval",
                ("github_pr_review", "github_pr_rerun_ci")),
@@ -753,6 +758,7 @@ def turn_declarations() -> list:
 # function name → builder that returns the actions.run_action() spec dict.
 _SPEC = {
     "check_local_ai": lambda a: {"type": "ollama_diagnostics"},
+    "test_local_ai_generation": lambda a: {"type": "ollama_inference_probe"},
     "github_pr_review": lambda a: {"type": "github_pr_inspect",
                                    "repo": a.get("repo", ""), "pr": a.get("pr", ""),
                                    "deep": a.get("deep") is True},
