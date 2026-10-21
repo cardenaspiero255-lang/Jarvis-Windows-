@@ -236,7 +236,10 @@ async def request_permission(kind: str, description: str, timeout: float = 120.0
     """Ask the GUI for Approve/Deny on a dangerous action. Blocks until the user
     responds (or the request times out → treated as denied)."""
     loop = asyncio.get_running_loop()
-    req_id = f"{time.time()}"
+    # Unpredictable, collision-resistant per-request id. Timestamps could collide
+    # when independent native-voice and text actions requested permission together.
+    from secrets import token_urlsafe
+    req_id = token_urlsafe(24)
     fut: "asyncio.Future" = loop.create_future()
     _pending_perms[req_id] = fut
     await emit("permission_request", {"id": req_id, "kind": kind, "description": description})
@@ -279,9 +282,14 @@ async def handle_permission_response(data) -> None:
     """GUI → backend: the user clicked Approve or Deny."""
     if not isinstance(data, dict):
         return
-    fut = _pending_perms.get(data.get("id"))
+    # Explicit booleans only. Strings such as "false" evaluate to True under
+    # bool(value) and must never authorize a GitHub Actions write or PC control.
+    if (not isinstance(data.get("id"), str)
+            or type(data.get("approved")) is not bool):
+        return
+    fut = _pending_perms.get(data["id"])
     if fut is not None and not fut.done():
-        fut.set_result(bool(data.get("approved")))
+        fut.set_result(data["approved"])
 
 
 # Pending mid-task clarify questions, keyed by request id → Future resolved by GUI.
