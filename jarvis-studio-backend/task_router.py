@@ -48,18 +48,22 @@ _URL_RE = re.compile(r"\bhttps?://|\bwww\.|\b[a-z0-9][a-z0-9\-]{1,}\.(?:com|org|
 # Phrases that name the surface outright.
 _WEB_PHRASE_RE = re.compile(
     r"\b(?:in|on|via|using|through)\s+(?:the\s+)?(?:browser|web|internet|chrome|edge|firefox)\b"
-    r"|\bweb ?site\b|\bweb page\b|\bwebpage\b|\bonline\b|\bsearch the web\b",
+    r"|\bweb ?site\b|\bweb page\b|\bwebpage\b|\bonline\b|\bsearch the web\b"
+    r"|\b(?:en|desde|usando|por)\s+(?:el\s+)?(?:navegador|chrome|edge|firefox)\b",
     re.IGNORECASE)
 _DESKTOP_PHRASE_RE = re.compile(
     r"\b(?:desktop app|native app|installed app|on my (?:pc|computer|desktop|machine))\b"
-    r"|\bfile explorer\b|\btask manager\b|\bcontrol panel\b|\bcommand prompt\b",
+    r"|\bfile explorer\b|\btask manager\b|\bcontrol panel\b|\bcommand prompt\b"
+    r"|\b(?:administrador de tareas|explorador de archivos|aplicaci[oó]n instalada)\b"
+    r"|\ben mi (?:pc|computadora|ordenador)\b",
     re.IGNORECASE)
 
 # Candidate app names: what follows a launch/context verb, up to a connective.
 # "Open Notepad and type …" → "Notepad"; "in Excel, sum …" → "Excel".
 _CANDIDATE_RE = re.compile(
-    r"\b(?:open|launch|start|run|use|in|on|into|with|using)\s+"
-    r"(?:the\s+|my\s+|a\s+)?"
+    r"\b(?:open|launch|start|run|use|in|on|into|with|using|"
+    r"abre|abrir|inicia|iniciar|ejecuta|ejecutar|usa|utiliza|en|con)\s+"
+    r"(?:the\s+|my\s+|a\s+|el\s+|la\s+|mi\s+|un\s+|una\s+)?"
     r"([A-Za-z][A-Za-z0-9+.\-]*(?:\s+[A-Za-z0-9+.\-]+){0,2})",
     re.IGNORECASE)
 
@@ -69,6 +73,8 @@ _STOP_WORDS = {
     "type", "write", "open", "click", "press", "save", "search", "find", "go",
     "it", "that", "this", "my", "me", "please", "sir", "app", "application",
     "window", "file", "new", "up", "down", "back", "again",
+    "y", "luego", "después", "despues", "que", "para", "por", "favor", "el",
+    "la", "un", "una", "mi", "escribe", "escribir", "abre", "archivo",
 }
 
 
@@ -79,7 +85,8 @@ _STOP_WORDS = {
 # "in/into <App>", which names the target ("type hello in Notepad").
 _QUOTED_RE = re.compile(r"\"[^\"]*\"|“[^”]*”|'[^']*'")
 _PAYLOAD_RE = re.compile(
-    r"\b(?:type|typing|write|writing|enter|paste|saying|that says|about)\b.*?"
+    r"\b(?:type|typing|write|writing|enter|paste|saying|that says|about|"
+    r"escribe|escribir|escribiendo|pega|pegar|introduce|redacta|sobre)\b.*?"
     r"(?=\s(?:in|into)\s+(?:the\s+|my\s+)?[A-Za-z][\w+.\-]*(?:\s+[A-Za-z][\w+.\-]*)?"
     r"\s*[.!]?$|$)",
     re.IGNORECASE | re.DOTALL)
