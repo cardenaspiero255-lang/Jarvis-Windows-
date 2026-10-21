@@ -202,6 +202,10 @@ def _local_permission(spec: dict) -> "Tuple[bool, str, str]":
     # The user must approve even read-only PR inspection: metadata about private
     # code and findings may be sent to the configured language model.
     # Raw PR code is NEVER forwarded to that model.
+    if atype == "ollama_inference_probe":
+        return True, "ollama_inference", (
+            "test the configured Ollama model with a fixed, non-personal prompt "
+            "at the configured endpoint; this uses local model resources")
     if atype == "github_pr_inspect":
         return True, "github_pr_read", (f"inspect GitHub PR #{spec.get('pr', '')} in "
                                       f"{spec.get('repo', '')} and share only "
@@ -627,6 +631,16 @@ def _run_one(spec: dict) -> dict:
                 "message": status["message"],
                 "feed_to_model": {"name": "local Ollama diagnostic",
                                   "content": _json.dumps(status, ensure_ascii=False)}}
+
+    # ── Approved inference check: no prompts or generated text forwarded ──────
+    if atype == "ollama_inference_probe":
+        import json as _json
+        from llm import groq_bridge as _gb
+        from ollama_diagnostics import probe_generation
+        report = probe_generation(_gb._ollama_url(), _gb._offline_model())
+        return {"type": atype, "ok": report["ok"], "message": report["message"],
+                "feed_to_model": {"name": "Ollama local generation probe",
+                                  "content": _json.dumps(report, ensure_ascii=False)}}
 
     # ── GitHub PR analysis (read only) and approved GitHub-hosted CI ───────────
     if atype in ("github_pr_inspect", "github_ci_rerun"):
