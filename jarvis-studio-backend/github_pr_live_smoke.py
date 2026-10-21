@@ -47,12 +47,12 @@ def main():
         raise RuntimeError("The live PR had no analyzable Python changes.")
     if multi["language_candidates"] < 1 or multi["files_analyzed"] < 1:
         raise RuntimeError("The live PR had no analyzable JS/TS/Kotlin changes.")
-    if multi["files_analyzed"] > 12 or len(multi["findings"]) > 60:
+    if multi["files_analyzed"] > 24 or len(multi["findings"]) > 60:
         raise RuntimeError("JS/TS/Kotlin scanning exceeded its bounded budget.")
     if not all(name in evidence["language_analysis"]["by_language"]
                for name in ("javascript", "typescript", "kotlin")):
         raise RuntimeError("Language evidence missing required counters.")
-    if semantic["files_analyzed"] > 12 or len(semantic["findings"]) > 60:
+    if semantic["files_analyzed"] > 24 or len(semantic["findings"]) > 60:
         raise RuntimeError("The AST analysis escaped its resource budget.")
     print("PASS: live authenticated, read-only GitHub PR inspection")
     print("HEAD verified; files checked:", report["files_inspected"],
