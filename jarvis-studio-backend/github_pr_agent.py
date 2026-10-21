@@ -178,6 +178,25 @@ def model_evidence(report):
              ("success", "failure", "cancelled", "skipped", "timed_out", "neutral", "action_required") else None}
             for c in report.get("checks", [])[:100]
         ],
+        "semantic_analysis": {
+            "complete": bool((report.get("semantic_analysis") or {}).get("complete", False)),
+            "python_candidates": int((report.get("semantic_analysis") or {}).get("python_candidates") or 0),
+            "files_analyzed": int((report.get("semantic_analysis") or {}).get("files_analyzed") or 0),
+            "unavailable_files": int((report.get("semantic_analysis") or {}).get("unavailable_files") or 0),
+            "parse_failures": int((report.get("semantic_analysis") or {}).get("parse_failures") or 0),
+            "findings": [
+                {"rule": finding["rule"],
+                 "file": _safe_file_name(finding.get("file")),
+                 "line": int(finding["line"]),
+                 "kind": "AST heuristic"}
+                for finding in (report.get("semantic_analysis") or {}).get("findings", [])[:60]
+                if finding.get("rule") in (
+                    "subprocess-shell", "dynamic-eval", "dynamic-exec",
+                    "os-system", "tls-verification-disabled", "pickle-deserialization")
+                and isinstance(finding.get("line"), int)
+                and 0 < finding["line"] < 1000000
+            ]
+        },
         "workflow_runs": [
             {"id": run.get("id") if isinstance(run.get("id"), int) else None,
              "status": run.get("status") if run.get("status") in ("queued", "in_progress", "completed") else "unknown",
