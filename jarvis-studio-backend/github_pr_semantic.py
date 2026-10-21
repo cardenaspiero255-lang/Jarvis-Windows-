@@ -11,7 +11,7 @@ import binascii
 import re
 from urllib.parse import quote
 
-_MAX_FILES = 12
+_MAX_FILES = 24
 _MAX_BYTES = 160_000
 _MAX_PATCH_BYTES = 240_000
 _SAFE_PATH = re.compile(r"^[A-Za-z0-9_./-]{1,180}$")
@@ -113,7 +113,7 @@ def _safe_path(path):
 
 
 def analyze_pull_request_python(repo, number, api=None):
-    """Read up to 12 changed Python files at immutable HEAD SHA.
+    """Read up to 24 changed Python files at immutable HEAD SHA.
 
     Never runs code, installs dependencies, follows arbitrary URLs, or accesses
     workspace paths. Missing/oversized/binary/invalid files count as incomplete.
