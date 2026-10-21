@@ -87,8 +87,15 @@ class GitHubAPI:
                           data=b"{}" if method == "POST" else None, method=method)
         try:
             with urlopen(request, timeout=12) as response:
-                raw = response.read(700001)
-                if len(raw) > 700000:
+                # GitHub's 100-file PR pages can exceed 700 kB (our real
+                # JARVIS PR had a 925 kB first page). Keep a *separate*
+                # strict 4 MB limit for that endpoint; do not expand it for
+                # ordinary API responses or full file contents.
+                max_bytes = (4_000_000 if re.search(
+                    r"/pulls/[0-9]+/files\?per_page=100&page=[0-9]+$", path
+                ) else 700_000)
+                raw = response.read(max_bytes + 1)
+                if len(raw) > max_bytes:
                     raise APIError("GitHub response exceeded the size limit.")
                 return json.loads(raw) if raw else {}
         except HTTPError as err:
