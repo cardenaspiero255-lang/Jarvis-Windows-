@@ -610,6 +610,17 @@ def _run_one(spec: dict) -> dict:
         or spec.get("path") or spec.get("level") or spec.get("seconds") \
         or spec.get("name") or ""          # a tool call that misnames itself keeps its args
 
+    # ── Local AI diagnostics: read-only, no model downloads or cloud requests ──
+    if atype == "ollama_diagnostics":
+        import json as _json
+        from llm import groq_bridge as _gb
+        from ollama_diagnostics import diagnose
+        status = diagnose(_gb._ollama_url(), _gb._offline_model())
+        return {"type": atype, "ok": status["ok"],
+                "message": status["message"],
+                "feed_to_model": {"name": "local Ollama diagnostic",
+                                  "content": _json.dumps(status, ensure_ascii=False)}}
+
     # ── GitHub PR analysis (read only) and approved GitHub-hosted CI ───────────
     if atype in ("github_pr_inspect", "github_ci_rerun"):
         import json as _json
