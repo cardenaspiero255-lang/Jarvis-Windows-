@@ -87,7 +87,7 @@ class SemanticAnalysisTests(unittest.TestCase):
 
     def test_budget_now_covers_twenty_four_python_files(self):
         files = [{"filename": f"src/{i}.py", "status": "modified",
-                  "patch": "@@ -0,0 +1 @@\\n+eval(abc)"} for i in range(24)]
+                  "patch": "@@ -0,0 +1 @@\n+eval(abc)"} for i in range(24)]
         api = API(files, {f"src/{i}.py": "eval(abc)" for i in range(24)})
         report = analyze_pull_request_python("octo/app", 8, api)
         self.assertEqual(report["files_analyzed"], 24)
