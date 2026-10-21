@@ -15,7 +15,10 @@ from urllib.request import Request, urlopen
 _API = "https://api.github.com"
 _REPO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$")
 _SHA = re.compile(r"^[0-9a-fA-F]{40}$")
-_CREDENTIAL = re.compile(r"(?i)\b(password|secret|api[_-]?key|access[_-]?token|auth[_-]?token)\b\s*[:=]")
+_CREDENTIAL = re.compile(
+    r"(?i)(?:\b(password|passwd|secret|api[_-]?key|access[_-]?token|"
+    r"auth[_-]?token|authorization)\b\s*[:=]|\bbearer\s+\S+|"
+    r"\b(?:ghp_|github_pat_)\S+)")
 _MAX_DIFF = 24000
 _MAX_FILES = 100
 
@@ -97,8 +100,9 @@ def _clean_patch(raw):
     """Do not echo obvious credential assignments into an LLM or UI log."""
     lines = []
     for line in str(raw).splitlines():
-        if line.startswith("+") and not line.startswith("+++") and _CREDENTIAL.search(line):
-            lines.append("+[REDACTED: possible credential assignment]")
+        if _CREDENTIAL.search(line):
+            prefix = line[:1] if line[:1] in ("+", "-", " ") else " "
+            lines.append(prefix + "[REDACTED: possible credential assignment]")
         else:
             lines.append(line)
     return "\n".join(lines)
