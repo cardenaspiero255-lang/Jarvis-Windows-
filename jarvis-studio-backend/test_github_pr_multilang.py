@@ -91,12 +91,30 @@ class MultilangReviewTests(unittest.TestCase):
         self.assertFalse(any("/contents/" in p for p in api.calls))
 
     def test_large_pr_bounded_and_incomplete(self):
-        files = [pr_file(f"src/{i}.js", "eval(data)") for i in range(22)]
+        files = [pr_file(f"src/{i}.js", "eval(data)") for i in range(33)]
         report = inspect_multilang_pr("octo/app", 7,
                     FakeGitHub(files, {f["filename"]: "eval(data)" for f in files}))
-        self.assertLessEqual(report["files_analyzed"], 12)
+        self.assertLessEqual(report["files_analyzed"], 24)
         self.assertFalse(report["complete"])
         self.assertGreater(report["unavailable_files"], 0)
+
+    def test_wider_budget_analyzes_twenty_four_sources(self):
+        files = [pr_file(f"src/{i}.js", "eval(data)") for i in range(24)]
+        report = inspect_multilang_pr("octo/app", 7,
+                    FakeGitHub(files, {f["filename"]: "eval(data)" for f in files}))
+        self.assertEqual(report["files_analyzed"], 24)
+        self.assertTrue(report["complete"])
+
+    def test_budget_selection_includes_late_typescript_and_kotlin(self):
+        names = [(f"src/a{i:02}.js", "eval(data)") for i in range(26)]
+        names += [("src/end.ts", "eval(data)"),
+                  ("src/end.kt", "Runtime.getRuntime().exec(cmd)")]
+        files = [pr_file(name, source) for name, source in names]
+        report = inspect_multilang_pr("octo/app", 7, FakeGitHub(files, dict(names)))
+        self.assertEqual(report["files_analyzed"], 24)
+        self.assertGreaterEqual(report["by_language"]["typescript"], 1)
+        self.assertGreaterEqual(report["by_language"]["kotlin"], 1)
+        self.assertFalse(report["complete"])
 
     def test_removed_file_and_missing_patch(self):
         files = [{"filename": "src/a.ts", "status": "removed", "patch": None},
