@@ -66,9 +66,9 @@ class GitHubReviewTests(unittest.TestCase):
     def test_removed_secrets_and_auth_headers_are_also_redacted(self):
         api = fixture()
         api.data["/repos/octo/app/pulls/7/files?per_page=100&page=1"][0]["patch"] = (
-            "@@ -1 +1 @@\\n-password = 'removed-secret'\\n"
-            "+Authorization: Bearer github_pat_secret\\n"
-            " access_token = 'context-secret'\\n")
+            "@@ -1 +1 @@\n-password = 'removed-secret'\n"
+            "+Authorization: Bearer github_pat_secret\n"
+            " access_token = 'context-secret'\n")
         report = inspect_pull_request("octo/app", 7, api)
         self.assertNotIn("removed-secret", str(report))
         self.assertNotIn("github_pat_secret", str(report))
