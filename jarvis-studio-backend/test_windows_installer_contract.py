@@ -11,7 +11,7 @@ class WindowsInstallerAndPowercutContractTests(unittest.TestCase):
     def test_installer_smoke_must_execute_real_install_uninstall_with_receipts(self):
         source = (ROOT / "scripts" / "validate-installer.ps1").read_text(encoding="utf-8")
         for required in ("Get-FileHash", "SHA256", "Start-Process",
-                         "/S", "JARVIS.exe", "jarvis-backend.exe",
+                         "/S", "jarvis-studio-gui.exe", "jarvis-backend.exe",
                          "uninstall", "installer-smoke-proof.json",
                          "ExitCode", "Throw"):
             with self.subTest(required=required):
