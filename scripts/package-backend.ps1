@@ -49,6 +49,17 @@ try {
     Write-Host "Using $req (non-OCR installer bundle)" -ForegroundColor DarkGray
     & $python -m pip install -q -r $req pyinstaller
     if ($LASTEXITCODE -ne 0) { throw "pip install failed (exit $LASTEXITCODE)." }
+    # Record EXACT resolved Python package names/versions in CI without
+    # leaking index authentication that may appear in "pip freeze" URLs.
+    # This is an audit receipt, NOT proof of hash-pinned reproducibility.
+    if ($env:RUNNER_TEMP) {
+        $resolved = Join-Path $env:RUNNER_TEMP "jarvis-python-build-dependencies.txt"
+        & $python -m pip list --format=json | Set-Content -LiteralPath $resolved -Encoding utf8
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $resolved)) {
+            throw "Unable to capture actual frozen-backend dependency versions"
+        }
+    }
+
 
     # winrt-runtime ships its own old msvcp140.dll (14.29). Loaded first, it makes
     # onnxruntime (Piper, wake word) crash with an access violation, which kills
