@@ -103,6 +103,59 @@ class DurableGitRecoveryTests(unittest.TestCase):
                 self.assertEqual(self.snapshot(), self.before)
                 self.assertEqual(list(self.recovery.glob("*/journal.json")), [])
 
+    def test_partial_temporary_patch_write_recovers_without_touching_original(self):
+        for point in ("during_patch_temp_write", "after_patch_temp_fsync",
+                      "after_patch_replace"):
+            with self.subTest(point=point):
+                script = (
+                    "import os, pathlib\n"
+                    "import authorized_git_transaction as m\n"
+                    "def crash(at):\n"
+                    "    if at == " + repr(point) + ": os._exit(49)\n"
+                    "m._crash_test_checkpoint = crash\n"
+                    "m.AuthorizedGitTransaction(recovery_root=pathlib.Path("
+                    + repr(str(self.recovery)) + ")).stage("
+                    "repo_root=pathlib.Path(" + repr(str(self.repo)) + "),"
+                    "path='src/calc.py',original_sha256="
+                    + repr(hashlib.sha256(ORIGINAL).hexdigest()) + ","
+                    "patched_bytes=" + repr(PATCHED) + ","
+                    "patched_sha256=" + repr(hashlib.sha256(PATCHED).hexdigest()) + ","
+                    "owner='desktop-owner',approved=True)\n"
+                )
+                child = subprocess.run([sys.executable, "-c", script],
+                                       cwd=str(Path(__file__).parent),
+                                       capture_output=True, timeout=40)
+                self.assertEqual(child.returncode, 49,
+                                 child.stderr.decode(errors="replace"))
+                entries = list(self.recovery.glob("*/journal.json"))
+                self.assertEqual(len(entries), 1)
+                journal = json.loads(entries[0].read_bytes())
+                self.assertRegex(journal["staging_temp"],
+                                 r"^\\.jarvis-staged-[0-9a-f]{32}\\.tmp$")
+                staged = entries[0].parent / "worktree" / "src" / "calc.py"
+                observed = staged.read_bytes()
+                self.assertIn(observed, (ORIGINAL, PATCHED),
+                              "A crash must never leave half-written tracked bytes")
+                temp = staged.parent / journal["staging_temp"]
+                self.assertEqual(temp.exists(),
+                                 point != "after_patch_replace")
+                outcomes = AuthorizedGitTransaction(
+                    recovery_root=self.recovery).recover_pending()
+                self.assertEqual([o["status"] for o in outcomes], ["recovered"])
+                self.assertEqual(self.snapshot(), self.before)
+                self.assertEqual(list(self.recovery.glob("*/journal.json")), [])
+
+    def test_unrecognized_staging_file_blocks_cleanup(self):
+        receipt = self.stage()
+        worktree = Path(receipt["worktree"])
+        (worktree / "src" / ".other-untrusted.tmp").write_bytes(b"not journaled")
+        outcome = AuthorizedGitTransaction(
+            recovery_root=self.recovery).recover_pending()
+        self.assertEqual(outcome[0]["status"], "blocked")
+        self.assertTrue(Path(receipt["backup_path"]).exists())
+        self.assertTrue((worktree / "src" / ".other-untrusted.tmp").exists())
+        self.assertEqual((self.repo / "src/calc.py").read_bytes(), ORIGINAL)
+
     def test_hard_crash_while_rolling_back_is_idempotently_resumed(self):
         for phase in ("after_worktree_removed", "after_branch_removed"):
             with self.subTest(phase=phase):
