@@ -3,17 +3,20 @@ import React, { useState } from "react";
 // Local desktop consent UI. The backend enforces every state transition;
 // presentation never makes an external repo executable or edits the original.
 export default function RepositoryReview({
-  review, onClose, onInspect, onPropose, onApprove, onRollback, onExport,
+  review, onClose, onInspect, onPropose, onApprove, onRollback, onExport, onStageGit,
 }) {
   const [file, setFile] = useState(null);
   const [path, setPath] = useState("");
   const [fn, setFn] = useState("");
   const [confirmed, setConfirmed] = useState(false);
+  const [repoRoot, setRepoRoot] = useState("");
+  const [gitConfirmed, setGitConfirmed] = useState(false);
 
   const status = review?.status;
   const session = review?.session_id;
   const preview = status === "review_required";
   const staged = status === "copy_staged";
+  const gitStaged = status === "git_branch_staged";
   const error = status === "denied";
   const action = (label, handler, disabled = false) => (
     <button type="button" disabled={disabled} onClick={handler}
@@ -75,6 +78,21 @@ export default function RepositoryReview({
           {staged && <>
             <p>A modified ZIP copy is prepared in memory. The original is unchanged.</p>
             {action("Download modified ZIP", () => onExport(session))}
+            <p>Optionally stage the reviewed change on a NEW branch of a clean Git repository.
+              JARVIS will preserve a private recovery ZIP and leave the original checkout unchanged.
+              This does not run project tests or publish a commit.</p>
+            <label htmlFor="jarvis-git-root">Authorized clean Git repository root (absolute path)</label>
+            <input id="jarvis-git-root" value={repoRoot} placeholder="C:\\projects\\my-project"
+              onChange={(e) => setRepoRoot(e.target.value)} />
+            <label style={{ display: "flex", gap: 8 }}>
+              <input type="checkbox" checked={gitConfirmed}
+                onChange={(e) => setGitConfirmed(e.target.checked)} />
+              I authorize creating a temporary branch in this clean Git repository,
+              using only the exact SHA-256-reviewed file.
+            </label>
+            {action("Stage Git branch",
+              () => onStageGit(session, repoRoot, review.patched_sha256),
+              !gitConfirmed || !repoRoot.trim())}
             {review.zip_b64 && (
               <a download="jarvis-reviewed-copy.zip"
                 href={"data:application/zip;base64," + review.zip_b64}>
@@ -82,7 +100,15 @@ export default function RepositoryReview({
               </a>
             )}
           </>}
-          {action(staged ? "Discard copy (rollback)" : "Discard review",
+          {gitStaged && <>
+            <p>The reviewed patch is on a temporary linked Git branch.
+              The original checkout is unchanged and no tests were executed.</p>
+            <small style={{ overflowWrap: "anywhere" }}>Branch: {review.branch}</small>
+            <small style={{ overflowWrap: "anywhere" }}>Recovery archive: {review.backup_path}</small>
+            <small style={{ overflowWrap: "anywhere" }}>Staged worktree: {review.worktree}</small>
+          </>}
+          {action(gitStaged ? "Rollback Git branch" :
+            staged ? "Discard copy (rollback)" : "Discard review",
             () => { setConfirmed(false); onRollback(session); })}
         </>}
       </div>
