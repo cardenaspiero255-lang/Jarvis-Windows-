@@ -28,8 +28,12 @@ class ReleasePublicationGateTests(unittest.TestCase):
         self.assertIn("vars.ENABLE_SIGNED_RELEASE", source)
         self.assertIn("secrets.WINDOWS_SIGNING_CERT_THUMBPRINT", source)
         self.assertIn("PUBLISH: ", source)
-        self.assertIn("physical_power_loss_certified", source.lower()
-                      if "physical_power_loss_certified" in source else "physical_power_loss_certified")
+        # The signed-release gate must be opt-in, and unsigned/tag/manual
+        # runs must never be eligible for public publication.
+        self.assertRegex(source, r"(?s)- name: Verify pinned Authenticode publisher.*?if: env.PUBLISH == 'true'")
+        self.assertRegex(source, r"(?s)ENABLE_SIGNED_RELEASE == 'true'")
+        self.assertIn("physical_power_loss_certified = $false", 
+                      (root / "scripts" / "verify-release-signature.ps1").read_text("utf-8"))
 
     def test_manual_dispatch_from_tag_cannot_publish_release(self):
         root = Path(__file__).resolve().parent.parent
