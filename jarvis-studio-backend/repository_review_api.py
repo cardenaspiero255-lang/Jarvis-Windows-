@@ -53,7 +53,8 @@ class RepositoryReviewAPI:
                     result = await asyncio.to_thread(
                         self.sessions.propose,
                         owner, data.get("session_id"),
-                        data.get("path"), data.get("function"), propose=propose)
+                        data.get("path"), data.get("function"), propose=propose,
+                        goal=data.get("goal"))
                 elif action == "apply_copy":
                     if data.get("approved") is not True:
                         raise ReviewDenied("Second explicit hash-bound approval required")
