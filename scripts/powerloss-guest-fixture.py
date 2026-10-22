@@ -22,7 +22,8 @@ import authorized_git_transaction as transaction
 ORIGINAL = b"def total(price, qty):\n    return price - qty\n"
 PATCHED = b"def total(price, qty):\n    return qty * price\n"
 PHASES = ("after_backup", "after_worktree", "after_branch",
-          "after_patch", "after_staged")
+          "during_patch_temp_write", "after_patch_temp_fsync",
+          "after_patch_replace", "after_patch", "after_staged")
 
 
 def _git(root, *args):
