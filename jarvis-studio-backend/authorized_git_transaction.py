@@ -23,6 +23,15 @@ import shutil
 import subprocess
 import tempfile
 import zipfile
+from durable_git_recovery import (
+    recovery_root as _recovery_root, write_journal, sync_file,
+    recover_entry, recover_pending as _recover_pending,
+)
+
+
+def _crash_test_checkpoint(_phase):
+    """No-op; subprocess regression injects os._exit at crash boundaries."""
+    return None
 
 
 class GitTransactionDenied(ValueError):
@@ -181,12 +190,18 @@ def _make_backup(root, base, files, destination):
                 raise GitTransactionDenied("Recovery ZIP failed its verification")
         if _sha(z.read("git-index.bin")) != base["index_sha256"]:
             raise GitTransactionDenied("Recovery index copy failed checksum")
+    sync_file(backup)
     return backup
 
 
 class AuthorizedGitTransaction:
-    def __init__(self):
+    def __init__(self, *, recovery_root=None):
         self._live = {}
+        self._store = _recovery_root(recovery_root)
+
+    def recover_pending(self):
+        """On startup, restore interrupted branches using disk journal only."""
+        return _recover_pending(self._store)
 
     def stage(self, *, repo_root, path, original_sha256, patched_bytes,
               patched_sha256, approved=False, owner=None, inject_failure=None):
@@ -218,23 +233,37 @@ class AuthorizedGitTransaction:
             raise GitTransactionDenied("No material change")
         # Never execute patched source; its AST policy was checked by review.
         base = _baseline(repo)
-        backup_parent = Path(tempfile.mkdtemp(prefix="jarvis-git-recovery-"))
-        if hasattr(os, "chmod"):
-            os.chmod(backup_parent, 0o700)
+        transaction_id = secrets.token_urlsafe(24)
+        backup_parent = self._store / transaction_id
+        try:
+            backup_parent.mkdir(mode=0o700)
+        except OSError as exc:
+            raise GitTransactionDenied("Could not allocate persistent recovery slot") from exc
         worktree = backup_parent / "worktree"
         branch = "jarvis/review-" + secrets.token_hex(8)
-        transaction_id = secrets.token_urlsafe(24)
         created_worktree = False
         branch_created = False
         try:
             backup = _make_backup(repo, base, files, backup_parent)
             _check_original(repo, files, base)
+            # Must be durable *before* any refs or linked-worktree metadata exist.
+            write_journal(backup_parent, {
+                "transaction_id": transaction_id,
+                "repository": str(repo), "worktree": str(worktree),
+                "branch": branch, "path": path, "baseline": base,
+                "original_sha256": original_sha256,
+                "patched_sha256": patched_sha256,
+                "backup_sha256": _sha(backup.read_bytes()),
+            })
+            _crash_test_checkpoint("after_backup")
             _git(repo, "worktree", "add", "--detach", str(worktree), base["head"])
             created_worktree = True
+            _crash_test_checkpoint("after_worktree")
             if inject_failure == "after_worktree":
                 raise GitTransactionDenied("Injected worktree failure")
             _git(worktree, "switch", "-c", branch)
             branch_created = True
+            _crash_test_checkpoint("after_branch")
             if inject_failure == "after_branch":
                 raise GitTransactionDenied("Injected branch failure")
             destination = worktree.joinpath(*PurePosixPath(path).parts)
@@ -242,7 +271,11 @@ class AuthorizedGitTransaction:
                 raise GitTransactionDenied("Linked worktree path invalid")
             if not hmac.compare_digest(_sha(destination.read_bytes()), original_sha256):
                 raise GitTransactionDenied("Linked checkout does not match approved source")
-            destination.write_bytes(patched_bytes)
+            with destination.open("wb") as staged:
+                staged.write(patched_bytes)
+                staged.flush()
+                os.fsync(staged.fileno())
+            _crash_test_checkpoint("after_patch")
             if inject_failure == "after_patch":
                 raise GitTransactionDenied("Injected patch write failure")
             if (_sha(destination.read_bytes()) != patched_sha256
@@ -261,18 +294,18 @@ class AuthorizedGitTransaction:
                 raise GitTransactionDenied("Original checkout changed; refuse staging")
         except BaseException as exc:
             try:
-                if created_worktree:
-                    _git(repo, "worktree", "remove", "--force", str(worktree))
-                if branch_created:
-                    _git(repo, "branch", "-D", branch)
-                if _baseline(repo) != base or _inventory(repo) != files:
-                    raise GitRollbackIncomplete("Original Git snapshot does not match backup")
-                shutil.rmtree(backup_parent)
+                if (backup_parent / "journal.json").is_file():
+                    recover_entry(backup_parent)
+                else:
+                    if created_worktree or branch_created:
+                        raise GitRollbackIncomplete("Git changed before durable journal")
+                    shutil.rmtree(backup_parent)
             except BaseException as rollback_error:
                 raise GitRollbackIncomplete(
                     "Automatic rollback not certified; keep recovery ZIP at "
                     + str(backup_parent / "recovery.zip")) from rollback_error
             raise GitTransactionDenied("Staging failed; original Git snapshot restored") from exc
+        _crash_test_checkpoint("after_staged")
         self._live[transaction_id] = {
             "owner": owner, "repo": repo, "worktree": worktree,
             "branch": branch, "baseline": base, "files": files,
@@ -295,28 +328,15 @@ class AuthorizedGitTransaction:
         if (not isinstance(owner, str) or not isinstance(transaction_id, str)
                 or state is None or not hmac.compare_digest(owner, state["owner"])):
             raise GitTransactionDenied("Unknown or unauthorized Git transaction")
-        repo, worktree, branch = state["repo"], state["worktree"], state["branch"]
-        baseline, files = state["baseline"], state["files"]
-        target = worktree.joinpath(*PurePosixPath(state["path"]).parts)
         try:
-            if (not worktree.is_dir() or target.is_symlink() or not target.is_file()
-                    or not hmac.compare_digest(_sha(target.read_bytes()),
-                                               state["patched_sha256"])
-                    or _git(worktree, "rev-parse", "HEAD") != baseline["head"]
-                    or _git(worktree, "diff", "--name-only") != state["path"]
-                    or _sha((repo / ".git" / "index").read_bytes()) != baseline["index_sha256"]
-                    or _git(repo, "status", "--porcelain=v1", "--untracked-files=all")):
-                raise GitRollbackIncomplete("Interference detected; recovery ZIP preserved")
-            _git(repo, "worktree", "remove", "--force", str(worktree))
-            _git(repo, "branch", "-D", branch)
-            if _baseline(repo) != baseline or _inventory(repo) != files:
-                raise GitRollbackIncomplete("Rollback mismatched original snapshot")
-            shutil.rmtree(state["backup"])
+            report = recover_entry(state["backup"])
         except BaseException as exc:
-            raise GitRollbackIncomplete("Cannot confirm exact restoration; backup preserved") from exc
+            raise GitRollbackIncomplete(
+                "Cannot confirm exact restoration; persistent recovery ZIP preserved") from exc
         del self._live[transaction_id]
         return {
-            "status": "git_rolled_back", "restored_head": baseline["head"],
-            "restored_exact_snapshot": True, "published": False,
-            "original_checkout_modified": False,
+            "status": "git_rolled_back",
+            "restored_head": state["baseline"]["head"],
+            "restored_exact_snapshot": report["restored_exact_snapshot"],
+            "published": False, "original_checkout_modified": False,
         }
