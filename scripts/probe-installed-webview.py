@@ -50,6 +50,10 @@ async def main() -> dict:
             # review control appears only after successful HUD connection.
             review_button = page.get_by_role("button", name="Open repository ZIP review")
             await review_button.wait_for(state="visible", timeout=40000)
+            # A visible microphone control proves only UI affordance, not actual
+            # capture hardware, owner voice or offline ASR.
+            if not await page.get_by_role("button", name="Talk", exact=True).is_visible():
+                raise RuntimeError("Installed HUD microphone control is missing")
             await review_button.click()
             dialog = page.get_by_role("dialog", name="Repository review")
             await dialog.wait_for(state="visible", timeout=10000)
@@ -77,6 +81,7 @@ async def main() -> dict:
                 "repo_zip_dialog_opened_and_closed": True,
                 "unapproved_patch_cannot_be_approved_in_ui": True,
                 "settings_opened_by_real_click": True,
+                "voice_talk_control_rendered": True,
                 "screenshot_bytes": target.stat().st_size,
                 "gui_webview_screenshot": "jarvis-installed-webview.png",
                 "visual_or_voice_physical_certified": False,
