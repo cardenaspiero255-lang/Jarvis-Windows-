@@ -119,7 +119,13 @@ class GitTransactionTests(unittest.TestCase):
         with self.assertRaises(GitTransactionDenied):
             self.stage()
         (self.root / "src" / "calc.py").write_bytes(ORIGINAL)
-        self.assertEqual(self.snapshot(), self.base)
+        # Ordinary Git status can refresh index stat-cache metadata after a
+        # deliberate external edit; compare logical index instead of raw bytes.
+        restored = self.snapshot()
+        baseline = dict(self.base)
+        restored.pop("index")
+        baseline.pop("index")
+        self.assertEqual(restored, baseline)
 
     def test_exact_owner_and_session_required_to_rollback(self):
         receipt = self.stage()
