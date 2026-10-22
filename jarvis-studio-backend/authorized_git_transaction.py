@@ -19,13 +19,14 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import secrets
+import stat
 import shutil
 import subprocess
 import tempfile
 import zipfile
 from durable_git_recovery import (
     recovery_root as _recovery_root, write_journal, sync_file,
-    recover_entry, recover_pending as _recover_pending,
+    recover_entry, recover_pending as _recover_pending, _sync_dir,
 )
 
 
@@ -250,6 +251,9 @@ class AuthorizedGitTransaction:
             raise GitTransactionDenied("Could not allocate persistent recovery slot") from exc
         worktree = backup_parent / "worktree"
         branch = "jarvis/review-" + secrets.token_hex(8)
+        # Names must be recorded durably before the worktree exists, so crash
+        # recovery can identify exactly ONE generated temporary file.
+        staging_name = ".jarvis-staged-" + secrets.token_hex(16) + ".tmp"
         created_worktree = False
         branch_created = False
         try:
@@ -262,6 +266,7 @@ class AuthorizedGitTransaction:
                 "branch": branch, "path": path, "baseline": base,
                 "original_sha256": original_sha256,
                 "patched_sha256": patched_sha256,
+                "staging_temp": staging_name,
                 "backup_sha256": _sha(backup.read_bytes()),
             })
             _crash_test_checkpoint("after_backup")
@@ -280,10 +285,30 @@ class AuthorizedGitTransaction:
                 raise GitTransactionDenied("Linked worktree path invalid")
             if not hmac.compare_digest(_sha(destination.read_bytes()), original_sha256):
                 raise GitTransactionDenied("Linked checkout does not match approved source")
-            with destination.open("wb") as staged:
-                staged.write(patched_bytes)
+            # DO NOT truncate the Git-tracked file: even a process death mid-
+            # write must leave either the exact original or the reviewed bytes.
+            # The tempfile lives on the destination volume, allowing an atomic
+            # same-directory replacement even if recovery_root is elsewhere.
+            stage_temp = destination.with_name(staging_name)
+            if stage_temp.exists() or stage_temp.is_symlink():
+                raise GitTransactionDenied("Journalled patch tempfile already exists")
+            with stage_temp.open("xb") as staged:
+                midpoint = max(1, len(patched_bytes) // 2)
+                staged.write(patched_bytes[:midpoint])
                 staged.flush()
                 os.fsync(staged.fileno())
+                _crash_test_checkpoint("during_patch_temp_write")
+                staged.write(patched_bytes[midpoint:])
+                staged.flush()
+                os.fsync(staged.fileno())
+            if not hmac.compare_digest(_sha(stage_temp.read_bytes()), patched_sha256):
+                raise GitTransactionDenied("Temporary patch differs from approved digest")
+            os.chmod(stage_temp, stat.S_IMODE(destination.stat().st_mode))
+            _sync_dir(stage_temp.parent)
+            _crash_test_checkpoint("after_patch_temp_fsync")
+            os.replace(stage_temp, destination)
+            _sync_dir(destination.parent)
+            _crash_test_checkpoint("after_patch_replace")
             _crash_test_checkpoint("after_patch")
             if inject_failure == "after_patch":
                 raise GitTransactionDenied("Injected patch write failure")
