@@ -225,6 +225,16 @@ def function_declarations(places_ok: "bool | None" = None,
             {"name": _str("App to close, e.g. 'chrome', 'spotify'.")}, ["name"]),
         _fn("open_website", "Open a URL in the default web browser.",
             {"url": _str("The full URL or domain to open.")}, ["url"]),
+        _fn("repair_controlled_repository",
+            "With explicit approval, repair one of TWO known bugs in a "
+            "trusted disposable TWO-MODULE local Git repository: price total "
+            "or percentage discount. Ask locally installed Ollama for one "
+            "return-statement proposal, validate its restricted AST and fixed "
+            "regression vectors, then create an UNCOMMITTED local temporary Git "
+            "branch with a verified diff. NEVER clone, run arbitrary commands, "
+            "read user repositories, create a PR, or push/publish anything.",
+            {"task": _str("Full spoken request: fix total or discount in test repo.")},
+            ["task"]),
         _fn("fix_sample_code_locally",
             "Run the SAFE LOCAL CODING DEMO only when asked to fix the sample "
             "addition function: ask installed Ollama to propose one return "
@@ -595,7 +605,7 @@ def _skill_tools() -> list:
 
 GROUPS = {
     "local_ai": ("Check the health of locally configured Ollama models without "
-                 "downloading models", ("check_local_ai", "test_local_ai_generation", "fix_sample_code_locally")),
+                 "downloading models", ("check_local_ai", "test_local_ai_generation", "fix_sample_code_locally", "repair_controlled_repository")),
     "github": ("Read real GitHub pull requests, examine code diffs and CI checks; "
                "rerun a specific PR workflow only after user approval",
                ("github_pr_review", "github_pr_rerun_ci")),
@@ -624,7 +634,7 @@ GROUPS = {
 # Cheap word cues that pre-load a group, so the common turn never pays load_tools.
 # Over-matching only costs tokens; under-matching costs a round trip, so be generous.
 _CUES = {
-    "local_ai": r"\b(ollama|modelo local|ia local|inteligencia artificial local|arregla la suma|corrige la suma|prueba de programaci[oó]n|"
+    "local_ai": r"\b(ollama|modelo local|ia local|inteligencia artificial local|arregla la suma|corrige la suma|prueba de programaci[oó]n|corrige el total|corrige descuento|repo de prueba|repositorio de prueba|"
                 r"sin internet|offline|local model|check local ai)\b",
     "github": r"\b(github|git hub|pull request|pull requests|PR[ #]+[0-9]+|repo|repositorio|"
               r"revisa (?:el )?pr|review (?:the )?pr|checks?|CI|workflow)\b",
@@ -769,6 +779,7 @@ _SPEC = {
     "check_local_ai": lambda a: {"type": "ollama_diagnostics"},
     "test_local_ai_generation": lambda a: {"type": "ollama_inference_probe"},
     "fix_sample_code_locally": lambda a: {"type": "local_coding_demo", "task": a.get("task", "")},
+    "repair_controlled_repository": lambda a: {"type": "controlled_repo_repair", "task": a.get("task", "")},
     "github_pr_review": lambda a: {"type": "github_pr_inspect",
                                    "repo": a.get("repo", ""), "pr": a.get("pr", ""),
                                    "deep": a.get("deep") is True},
