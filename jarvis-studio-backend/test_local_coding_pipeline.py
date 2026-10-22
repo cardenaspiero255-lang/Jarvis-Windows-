@@ -24,6 +24,15 @@ class LocalCodingPipelineTests(unittest.TestCase):
         self.assertIn("-    return a - b", result["diff"])
         self.assertIn("return a + b", (Path(result["workspace"]) / "calculator.py").read_text())
 
+    def test_disk_bytes_match_receipt_on_windows_and_linux(self):
+        import hashlib
+        report = self.run_task('{"replacement":"return a + b"}')
+        self.assertTrue(report["ok"])
+        exact = (Path(report["workspace"]) / "calculator.py").read_bytes()
+        self.assertEqual(hashlib.sha256(exact).hexdigest(), report["sha256"])
+        self.assertNotIn(b"\r\n", exact)
+        self.assertIn(b"\n    return a + b\n", exact)
+
     def test_unsafe_proposals_never_executed(self):
         for patch in ("return a / b", "return __import__('os').system('dir')",
                       "return a + b; print(42)", "return a + b\nprint(42)"):
