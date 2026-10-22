@@ -55,7 +55,7 @@ jobs:
             $errors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile(
               (Resolve-Path $path), [ref]$tokens, [ref]$errors)
-            if ($errors.Count -ne 0) { throw "PowerShell parse errors in $path: $($errors -join '; ')" }
+            if ($errors.Count -ne 0) { throw "PowerShell parse errors in $($path): $($errors -join '; ')" }
           }
       - name: Installer + power cut contract regression tests
         shell: pwsh
