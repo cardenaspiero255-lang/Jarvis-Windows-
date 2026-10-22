@@ -21,6 +21,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import secrets
 
 from controlled_repository_agent import _evaluate, _expression
 from local_coding_pipeline import CodingTaskError, parse_proposal
@@ -101,16 +102,26 @@ def prepare_demo_snapshot(parent):
     return target
 
 
-def build_container_argv(snapshot, image):
-    """Produce one fixed Docker argv; only snapshot and pinned digest vary."""
+_CONTAINER_NAME = re.compile(r"^jarvis-ci-[a-z0-9]{4,32}$")
+
+
+def build_container_argv(snapshot, image, container_name=None):
+    """Return a detached, resource-bounded container command with fixed argv.
+
+    Model output controls neither Docker arguments nor image, source path,
+    executable, environment, mounts or test commands.
+    """
     try:
         p = validate_snapshot(snapshot)
     except (OSError, ValueError) as exc:
         raise SandboxError("Invalid snapshot") from exc
     if not isinstance(image, str) or not _IMAGE.fullmatch(image):
         raise SandboxError("Image MUST be an immutable official Python SHA256 digest")
+    name = container_name or ("jarvis-ci-" + secrets.token_hex(8))
+    if not isinstance(name, str) or not _CONTAINER_NAME.fullmatch(name):
+        raise SandboxError("Invalid restricted container name")
     return [
-        "docker", "run", "--rm",
+        "docker", "run", "-d", "--name=" + name,
         "--pull=never",
         "--network=none",
         "--read-only",
@@ -123,6 +134,11 @@ def build_container_argv(snapshot, image):
         "--user=65534:65534",
         "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=16m",
         "--ulimit=nofile=64:64",
+        # Bound stored logs on the daemon. docker logs --tail is also capped
+        # and a long log line is rejected before parsing test success.
+        "--log-driver=local",
+        "--log-opt=max-size=1m",
+        "--log-opt=max-file=1",
         "--mount=type=bind,source=" + str(p) + ",target=/code,readonly",
         "--workdir=/code",
         "--env=PYTHONPATH=/code/src",
@@ -135,29 +151,71 @@ def build_container_argv(snapshot, image):
 
 
 def run_container_tests(snapshot, image):
-    """Docker is the ONLY executor. No test imports or child shell on the host."""
-    argv = build_container_argv(snapshot, image)
-    # No inherited GITHUB_TOKEN, DOCKER_HOST, DOCKER_CONFIG, AWS_* or model keys.
-    env = {name: os.environ[name] for name in (
-        "PATH", "SystemRoot", "SYSTEMROOT", "WINDIR", "PATHEXT", "COMSPEC"
-    ) if name in os.environ}
-    try:
-        outcome = subprocess.run(
-            argv, cwd=str(Path(snapshot).resolve()), env=env,
-            shell=False, timeout=90, capture_output=True, text=True,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        return {"passed": False, "status": "timeout", "tests_reported": 0}
-    except (OSError, ValueError):
-        return {"passed": False, "status": "runner_unavailable", "tests_reported": 0}
-    combined = (outcome.stdout or "")[-_MAX_OUTPUT:] + (outcome.stderr or "")[-_MAX_OUTPUT:]
-    seen = re.findall(r"\bRan\s+(\d+)\s+tests?\b", combined)
-    count = int(seen[-1]) if seen else 0
-    return {"passed": outcome.returncode == 0 and count >= 11,
-            "status": "passed" if outcome.returncode == 0 and count >= 11
-                      else "tests_failed",
-            "tests_reported": count}
+    """Run tests ONLY in the container and always force-clean the daemon job.
+
+    docker run is detached to avoid capturing unbounded attached test output.
+    Even if docker wait times out or the Docker client crashes, docker rm -f
+    runs in finally. Missing/failed cleanup is NOT a successful test.
+    """
+    name = "jarvis-ci-" + secrets.token_hex(8)
+    argv = build_container_argv(snapshot, image, container_name=name)
+    status = "runner_unavailable"
+    reported = 0
+    passed = False
+    cleaned = False
+    # Never consult an inherited Docker daemon address, credentials or context:
+    # use only this host's Unix socket and a throwaway Docker client config.
+    with tempfile.TemporaryDirectory(prefix="jarvis-docker-client-") as home:
+        env = {key: os.environ[key] for key in ("PATH", "SystemRoot", "SYSTEMROOT",
+              "WINDIR", "PATHEXT", "COMSPEC") if key in os.environ}
+        env.update({"HOME": home, "DOCKER_CONFIG": home,
+                    "DOCKER_HOST": "unix:///var/run/docker.sock",
+                    "DOCKER_CONTEXT": "default"})
+        def call(args, timeout):
+            return subprocess.run(args, cwd=str(Path(snapshot).resolve()),
+                                  env=env, shell=False, timeout=timeout,
+                                  capture_output=True, text=True, check=False)
+        try:
+            started = call(argv, 15)
+            if started.returncode == 0:
+                waited = call(["docker", "wait", name], 90)
+                if waited.returncode == 0:
+                    try:
+                        code = int(waited.stdout.strip())
+                    except ValueError:
+                        code = -1
+                    logs = call(["docker", "logs", "--tail=100", name], 10)
+                    combined = (logs.stdout or "") + (logs.stderr or "")
+                    if logs.returncode != 0:
+                        status = "logs_unavailable"
+                    elif len(combined.encode("utf-8")) > _MAX_OUTPUT:
+                        status = "output_limit"
+                    else:
+                        matches = re.findall(r"\bRan\s+(\d+)\s+tests?\b", combined)
+                        reported = int(matches[-1]) if matches else 0
+                        passed = code == 0 and reported == 11 and "OK" in combined
+                        status = "passed" if passed else "tests_failed"
+                else:
+                    status = "wait_failed"
+            else:
+                status = "start_failed"
+        except subprocess.TimeoutExpired:
+            status = "timeout"
+        except (OSError, ValueError, UnicodeError):
+            status = "runner_unavailable"
+        finally:
+            try:
+                removed = call(["docker", "rm", "-f", name], 15)
+                # Docker may have removed the container itself only on a
+                # failed start. Fail closed rather than claim it was cleaned.
+                cleaned = removed.returncode == 0
+            except (OSError, subprocess.TimeoutExpired):
+                cleaned = False
+    if not cleaned:
+        return {"passed": False, "status": "cleanup_failed",
+                "tests_reported": reported, "container_cleaned": False}
+    return {"passed": passed, "status": status, "tests_reported": reported,
+            "container_cleaned": True}
 
 
 def apply_vetted_demo_fix(snapshot, raw_proposal):
