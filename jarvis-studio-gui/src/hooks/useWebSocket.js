@@ -59,6 +59,7 @@ export function useWebSocket() {
   const [weather, setWeather]     = useState(null);      // current conditions + hourly
   const [schedule, setSchedule]   = useState(null);      // today's agenda items
   const [uiCommand, setUiCommand] = useState(null);      // {cmd, nonce} — JARVIS controlling the app
+  const [repoReview, setRepoReview] = useState(null); // local-only ZIP review response
   const [permissionRequest, setPermissionRequest] = useState(null); // {id, kind, description}
   const [clarifyRequest, setClarifyRequest] = useState(null);       // {id, question} — autopilot mid-task question
   const [muted, setMutedState] = useState(false);        // persistent mute toggle (speech off, text on)
@@ -244,6 +245,9 @@ export function useWebSocket() {
             break;
           case "ui_action":
             setUiCommand({ cmd: msg.data, nonce: Date.now() + Math.random() });
+            break;
+          case "repo_review_state":
+            setRepoReview(msg.data || null);
             break;
           case "permission_request":
             setPermissionRequest(msg.data);
@@ -630,6 +634,44 @@ export function useWebSocket() {
     reader.readAsDataURL(file);
   }, [wsSend]);
 
+  // External repository review: local UI opt-in, separate ZIP copy only.
+  // Every mutation remains enforced by the backend's owner-locked session.
+  const inspectRepoZip = useCallback((file) => {
+    if (!file || !file.name?.toLowerCase().endsWith(".zip") ||
+        file.size > 4 * 1024 * 1024 || file.size <= 0) {
+      setRepoReview({ status: "denied", error: "Select a ZIP under 4 MB." });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => setRepoReview({ status: "denied", error: "Cannot read ZIP." });
+    reader.onload = () => {
+      const data = String(reader.result || "");
+      const encoded = data.includes(",") ? data.slice(data.indexOf(",") + 1) : "";
+      if (!encoded || !wsSend({
+        type: "repo_review.request",
+        data: { action: "inspect", consent: true, zip_b64: encoded },
+      })) {
+        setRepoReview({ status: "denied", error: "Local backend unavailable." });
+      }
+    };
+    reader.readAsDataURL(file);
+  }, [wsSend]);
+
+  const proposeRepoReview = useCallback((session_id, path, fn) =>
+    wsSend({ type: "repo_review.request",
+      data: { action: "propose", session_id, path, function: fn, consent: true } }),
+  [wsSend]);
+  const approveRepoReview = useCallback((session_id, expected_sha256) =>
+    wsSend({ type: "repo_review.request",
+      data: { action: "apply_copy", session_id, expected_sha256, approved: true } }),
+  [wsSend]);
+  const exportRepoReview = useCallback((session_id) =>
+    wsSend({ type: "repo_review.request", data: { action: "export", session_id } }),
+  [wsSend]);
+  const rollbackRepoReview = useCallback((session_id) =>
+    wsSend({ type: "repo_review.request", data: { action: "rollback", session_id } }),
+  [wsSend]);
+
   // ── Remote mobile control senders ───────────────────────────────────────
   // Mint a fresh QR pairing challenge (the payload streams back as device.pairing).
   const createPairing = useCallback((name = "Aura phone") => {
@@ -653,6 +695,7 @@ export function useWebSocket() {
   }, [wsSend]);
 
   return {
+    repoReview, inspectRepoZip, proposeRepoReview, approveRepoReview, exportRepoReview, rollbackRepoReview,
     status, messages, warnings, sysInfo, isConnected, wakeTriggered, ocrResult,
     telemetry, netInfo, weather, schedule, uiCommand, permissionRequest, clarifyRequest, muted,
     commands, recordings, browserState, controlState, screen, alwaysOn, conversationMode,
