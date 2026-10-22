@@ -47,7 +47,7 @@ def _validate_name(name):
         raise RepositoryIntakeError("Unsafe ZIP entry name")
     parts = name.rstrip("/").split("/")
     if (not all(parts) or any(p in (".", "..") or p.startswith(".")
-              or p.endswith((" ", ".")) or _RESERVED.fullmatch(p)
+              or p.endswith((" ", ".")) or " ." in p or _RESERVED.fullmatch(p)
               or any(ord(c) < 32 or ord(c) == 127 for c in p)
               for p in parts)):
         raise RepositoryIntakeError("Unsafe ZIP path component")
