@@ -49,8 +49,11 @@ class SandboxError(ValueError):
 
 def validate_snapshot(snapshot):
     """Reject links, metadata and oversized snapshots before Docker mount."""
-    p = Path(snapshot).resolve(strict=True)
-    if not p.is_dir() or p.is_symlink():
+    raw_path = Path(snapshot)
+    if raw_path.is_symlink():
+        raise SandboxError("Snapshot cannot be a symlink")
+    p = raw_path.resolve(strict=True)
+    if not p.is_dir():
         raise SandboxError("Snapshot must be a real directory")
     count, total = 0, 0
     for base, dirs, files in os.walk(p, followlinks=False):
