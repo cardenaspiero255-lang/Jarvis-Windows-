@@ -69,7 +69,15 @@ class RepositoryReviewAPI:
                 else:
                     raise ReviewDenied("Unsupported repository review action")
         except (ReviewDenied, CodingTaskError, TimeoutError, OSError, ValueError):
-            # Deliberately never include source or private model outputs in errors.
-            await send({"status": "denied", "error": "Request rejected or local model unavailable"})
+            # Return only the session ID already owned by this sender so the
+            # desktop can discard a rejected review instead of leaking it until TTL.
+            error = {"status": "denied", "error": "Request rejected or local model unavailable"}
+            try:
+                sid = data.get("session_id")
+                self.sessions.status(owner, sid)
+                error["session_id"] = sid
+            except ReviewDenied:
+                pass
+            await send(error)
             return
         await send(result)
