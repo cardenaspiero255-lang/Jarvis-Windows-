@@ -78,7 +78,8 @@ class RepositoryReviewSessions:
     def status(self, owner, session_id):
         s = self._check(owner, session_id)
         return {"session_id": session_id, "status":
-                ("copy_staged" if s["copy"] is not None else
+                ("git_branch_staged" if s["git_transaction"] is not None else
+                 "copy_staged" if s["copy"] is not None else
                  "review_required" if s["review"] is not None else "inspected"),
                 "source_sha256": s["review"]["patched_sha256"] if s["review"] else None,
                 "execution_allowed": False, "modified_user_repo": False,
@@ -176,10 +177,42 @@ class RepositoryReviewSessions:
                 "sha256": hashlib.sha256(state["copy"]).hexdigest(),
                 "modified_user_repo": False, "published": False}
 
+    def stage_git(self, owner, session_id, repo_root, expected_sha256, *,
+                  approved=False):
+        state = self._check(owner, session_id)
+        if (approved is not True or state["copy"] is None
+                or state["git_transaction"] is not None
+                or not isinstance(expected_sha256, str)
+                or not hmac.compare_digest(
+                    expected_sha256, state["review"]["patched_sha256"])):
+            raise ReviewDenied("Hash-bound Git authorization required")
+        path = state["path"]
+        try:
+            original = _read_files(state["archive"])[path]
+            patched = _read_files(state["copy"])[path]
+            receipt = self._git.stage(
+                repo_root=repo_root, path=path,
+                original_sha256=hashlib.sha256(original).hexdigest(),
+                patched_bytes=patched, patched_sha256=expected_sha256,
+                approved=True, owner=owner,
+            )
+        except (RepositoryIntakeError, GitTransactionDenied,
+                GitRollbackIncomplete, OSError, ValueError, TypeError) as exc:
+            raise ReviewDenied("Git branch staging rejected; preserve recovery evidence") from exc
+        state["git_receipt"] = receipt
+        state["git_transaction"] = receipt["transaction_id"]
+        return {**receipt, "session_id": session_id,
+                "status": "git_branch_staged", "execution_allowed": False,
+                "modified_user_repo": False, "published": False}
+
     def rollback(self, owner, session_id):
-        self._check(owner, session_id)
-        # Drop both original and staged copy; all approval capabilities expire.
+        state = self._check(owner, session_id, cleanup=True)
+        if state["git_transaction"] is not None:
+            try:
+                self._git.rollback(state["git_transaction"], owner=owner)
+            except (GitTransactionDenied, GitRollbackIncomplete) as exc:
+                raise ReviewDenied("Git rollback incomplete; recovery ZIP preserved") from exc
         del self._sessions[session_id]
         return {"status": "rolled_back", "session_id": session_id,
-                "copy_discarded": True, "modified_user_repo": False,
-                "published": False}
+                "copy_discarded": True, "git_branch_restored": True,
+                "modified_user_repo": False, "published": False}
