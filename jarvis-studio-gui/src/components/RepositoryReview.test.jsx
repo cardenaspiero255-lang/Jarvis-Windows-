@@ -60,6 +60,33 @@ describe("Windows repository review authorization", () => {
     expect(html).not.toContain("Approve modified copy");
   });
 
+  it("offers independently authorized Git staging only after an approved ZIP", () => {
+    const html = renderToStaticMarkup(
+      <RepositoryReview {...defaults} onStageGit={noop} review={{
+        status: "copy_staged", session_id: "s",
+        patched_sha256: "a".repeat(64),
+      }} />
+    );
+    expect(html).toContain("Stage Git branch");
+    expect(html).toContain("clean Git repository");
+    expect(html).toContain("original checkout");
+    expect(html).not.toContain("Apply directly to main");
+  });
+
+  it("shows local branch, persistent backup and rollback without publishing", () => {
+    const html = renderToStaticMarkup(
+      <RepositoryReview {...defaults} onStageGit={noop} review={{
+        status: "git_branch_staged", session_id: "s",
+        branch: "jarvis/review-abc123",
+        backup_path: "/recovery/recovery.zip",
+      }} />
+    );
+    expect(html).toContain("jarvis/review-abc123");
+    expect(html).toContain("recovery.zip");
+    expect(html).toContain("Rollback Git branch");
+    expect(html).not.toContain("Publish branch");
+  });
+
   it("shows rejected actions without a fake success claim", () => {
     const html = renderToStaticMarkup(
       <RepositoryReview {...defaults} review={{
