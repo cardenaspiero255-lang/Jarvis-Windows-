@@ -33,6 +33,29 @@ describe("Windows repository review authorization", () => {
     expect(html).toContain("Discard review");
   });
 
+  it("requires an explicit bounded repair goal before enabling local Qwen generation", () => {
+    const html = renderToStaticMarkup(
+      <RepositoryReview {...defaults} review={{
+        status: "inspected", file_count: 1, languages: ["python"],
+        session_id: "session-1",
+      }} />
+    );
+    expect(html).toContain('id="jarvis-repair-goal"');
+    expect(html).toContain('maxLength="200"');
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Generate local proposal<\\/button>/);
+  });
+
+  it("shows only sanitized rejection-stage codes instead of raw model output", () => {
+    const html = renderToStaticMarkup(
+      <RepositoryReview {...defaults} review={{
+        status: "denied", error: "Request rejected",
+        reason_code: "AST_POLICY",
+      }} />
+    );
+    expect(html).toContain("AST_POLICY");
+    expect(html).not.toContain("__import__");
+  });
+
   it("shows exact hash, escaped code diff and explicit approval", () => {
     const html = renderToStaticMarkup(
       <RepositoryReview {...defaults} review={{
