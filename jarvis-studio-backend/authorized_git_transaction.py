@@ -198,13 +198,22 @@ class AuthorizedGitTransaction:
     def __init__(self, *, recovery_root=None):
         self._live = {}
         self._store = _recovery_root(recovery_root)
+        self._recovery_checked = False
+        self._recovery_blocked = False
 
     def recover_pending(self):
         """On startup, restore interrupted branches using disk journal only."""
-        return _recover_pending(self._store)
+        result = _recover_pending(self._store)
+        self._recovery_checked = True
+        self._recovery_blocked = any(x["status"] != "recovered" for x in result)
+        return result
 
     def stage(self, *, repo_root, path, original_sha256, patched_bytes,
               patched_sha256, approved=False, owner=None, inject_failure=None):
+        if not self._recovery_checked:
+            self.recover_pending()
+        if self._recovery_blocked:
+            raise GitTransactionDenied("Pending Git recovery blocked; refuse new staging")
         if (approved is not True or not isinstance(owner, str) or not owner
                 or len(owner) > 256):
             raise GitTransactionDenied("Explicit approval and local owner are required")
