@@ -1,0 +1,43 @@
+# Real model smoke runs only on a disposable GitHub-hosted Windows runner.
+# Ollama standalone Windows package is SHA256-verified before extraction.
+name: Real Local Ollama Windows E2E
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/real-model-windows.yml'
+      - 'scripts/real-ollama-windows.ps1'
+      - 'jarvis-studio-backend/local_coding_pipeline.py'
+      - 'jarvis-studio-backend/real_local_model_e2e.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: real-local-ollama-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  real-windows-inference:
+    # Never execute forked PR code when downloading local models.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run real local GGUF coding proof
+        shell: pwsh
+        run: ./scripts/real-ollama-windows.ps1
+      - name: Preserve verified receipt
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-real-local-ollama-proof
+          path: ${{ runner.temp }}/jarvis-real-local-model-evidence.json
+          if-no-files-found: error
+          retention-days: 7
