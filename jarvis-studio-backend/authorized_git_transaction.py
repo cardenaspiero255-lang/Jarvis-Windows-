@@ -207,8 +207,8 @@ class AuthorizedGitTransaction:
             raise GitTransactionDenied("Invalid authorized Git directory") from exc
         if (not repo.is_dir() or not (repo / ".git").is_dir()
                 or (repo / ".git").is_symlink()
-                or _git(repo, "rev-parse", "--show-toplevel").casefold()
-                != str(repo).casefold()):
+                or Path(_git(repo, "rev-parse", "--show-toplevel")).resolve()
+                != repo):
             raise GitTransactionDenied("Only a real top-level Git working tree is supported")
         target = _validate_path(repo, path)
         files = _inventory(repo)
