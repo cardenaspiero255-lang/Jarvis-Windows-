@@ -140,8 +140,10 @@ class IsolationRunnerTests(unittest.TestCase):
 
     def test_demo_requires_baseline_fail_and_corrected_success(self):
         states = [
-            {"passed": False, "status": "tests_failed", "tests_reported": 11},
-            {"passed": True, "status": "passed", "tests_reported": 11},
+            {"passed": False, "status": "tests_failed", "tests_reported": 11,
+             "container_cleaned": True},
+            {"passed": True, "status": "passed", "tests_reported": 11,
+             "container_cleaned": True},
         ]
         with mock.patch("isolated_repo_runner.run_container_tests",
                         side_effect=states) as runner:
@@ -155,7 +157,8 @@ class IsolationRunnerTests(unittest.TestCase):
 
     def test_demo_cannot_succeed_if_baseline_already_green(self):
         with mock.patch("isolated_repo_runner.run_container_tests",
-                        return_value={"passed": True, "status": "passed", "tests_reported": 11}):
+                        return_value={"passed": True, "status": "passed", "tests_reported": 11,
+                                      "container_cleaned": True}):
             report = run_demo(IMAGE, workspace_root=self.root)
         self.assertFalse(report["verified"])
         self.assertEqual(report["status"], "invalid_baseline")
