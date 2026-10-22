@@ -9,6 +9,8 @@ on:
       - 'scripts/build.ps1'
       - 'scripts/package-backend.ps1'
       - 'scripts/validate-installer.ps1'
+      - 'scripts/probe-installed-runtime.ps1'
+      - 'scripts/probe-installed-websocket.py'
       - 'jarvis-studio-gui/**'
       - 'jarvis-studio-backend/**'
   workflow_dispatch:
@@ -42,6 +44,11 @@ jobs:
         shell: pwsh
         working-directory: jarvis-studio-backend
         run: python -m unittest -v test_windows_installer_contract
+      - name: Install pinned native WebSocket test client
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check websockets==12.0
+          if ($LASTEXITCODE -ne 0) { throw "Unable to install bounded native WS probe" }
       - name: Build lean NSIS with real frozen Python backend (no release)
         shell: pwsh
         run: ./scripts/build.ps1 -Lean
@@ -57,6 +64,14 @@ jobs:
         with:
           name: jarvis-installer-acceptance-receipt
           path: ${{ runner.temp }}/installer-smoke-proof.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Preserve installed GUI / frozen backend / auth proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-real-installed-runtime-proof
+          path: ${{ runner.temp }}/jarvis-installed-runtime-proof.json
           if-no-files-found: warn
           retention-days: 7
       - name: Preserve unsigned lean installer for opt-in offline inspection
