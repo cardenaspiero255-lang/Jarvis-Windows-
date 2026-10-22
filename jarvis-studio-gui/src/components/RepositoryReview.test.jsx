@@ -42,7 +42,7 @@ describe("Windows repository review authorization", () => {
     );
     expect(html).toContain('id="jarvis-repair-goal"');
     expect(html).toContain('maxLength="200"');
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Generate local proposal<\\/button>/);
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Generate local proposal<\/button>/);
   });
 
   it("shows only sanitized rejection-stage codes instead of raw model output", () => {
