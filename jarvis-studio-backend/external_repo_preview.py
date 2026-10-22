@@ -15,6 +15,7 @@ import os
 from pathlib import PurePosixPath
 import re
 import stat
+import struct
 import zipfile
 
 from controlled_repository_agent import _expression
@@ -64,6 +65,21 @@ def _read_files(blob):
             infos = z.infolist()
             if not infos or len(infos) > MAX_ENTRIES:
                 raise RepositoryIntakeError("Too many or no ZIP entries")
+            # Python's zipfile can normalize raw '\' names into '/' on Windows
+            # *before* exposing ZipInfo.filename. Inspect the original central
+            # directory name bytes rather than trusting that normalized view.
+            cursor = z.start_dir
+            for item in infos:
+                if cursor < 0 or cursor + 46 > len(blob) or blob[cursor:cursor + 4] != b"PK\x01\x02":
+                    raise RepositoryIntakeError("Malformed ZIP central header")
+                name_len, extra_len, comment_len = struct.unpack_from("<HHH", blob, cursor + 28)
+                end = cursor + 46 + name_len + extra_len + comment_len
+                if end > len(blob):
+                    raise RepositoryIntakeError("Truncated ZIP central record")
+                raw_name = blob[cursor + 46:cursor + 46 + name_len]
+                if b"\\" in raw_name or b"\x00" in raw_name:
+                    raise RepositoryIntakeError("Unsafe raw ZIP filename")
+                cursor = end
             for item in infos:
                 name = _validate_name(item.filename)
                 folded = name.casefold()
@@ -103,7 +119,7 @@ def _read_files(blob):
                 for idx in range(1, len(components)):
                     if "/".join(components[:idx]) in regular:
                         raise RepositoryIntakeError("File is also a parent directory")
-    except (OSError, zipfile.BadZipFile, zipfile.LargeZipFile, EOFError, RuntimeError) as exc:
+    except (OSError, zipfile.BadZipFile, zipfile.LargeZipFile, EOFError, RuntimeError, struct.error) as exc:
         raise RepositoryIntakeError("Invalid or corrupted ZIP archive") from exc
     if not files:
         raise RepositoryIntakeError("No accepted regular files")
