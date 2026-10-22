@@ -103,6 +103,29 @@ class DurableGitRecoveryTests(unittest.TestCase):
                 self.assertEqual(self.snapshot(), self.before)
                 self.assertEqual(list(self.recovery.glob("*/journal.json")), [])
 
+    def test_hard_crash_while_rolling_back_is_idempotently_resumed(self):
+        for phase in ("after_worktree_removed", "after_branch_removed"):
+            with self.subTest(phase=phase):
+                receipt = self.stage()
+                script = (
+                    "import os,pathlib\n"
+                    "import durable_git_recovery as m\n"
+                    "def crash(at):\n"
+                    "    if at == " + repr(phase) + ": os._exit(48)\n"
+                    "m._recovery_crash_checkpoint = crash\n"
+                    "m.recover_pending(pathlib.Path(" + repr(str(self.recovery)) + "))\n"
+                )
+                result = subprocess.run([sys.executable, "-c", script],
+                                        cwd=str(Path(__file__).parent),
+                                        capture_output=True, timeout=40)
+                self.assertEqual(result.returncode, 48,
+                                 result.stderr.decode(errors="replace"))
+                self.assertTrue(Path(receipt["backup_path"]).is_file())
+                outcomes = AuthorizedGitTransaction(
+                    recovery_root=self.recovery).recover_pending()
+                self.assertEqual([o["status"] for o in outcomes], ["recovered"])
+                self.assertEqual(self.snapshot(), self.before)
+
     def test_interference_blocks_destructive_cleanup_and_keeps_recovery_zip(self):
         r = self.stage()
         (Path(r["worktree"]) / "src/calc.py").write_bytes(b"external change\n")
