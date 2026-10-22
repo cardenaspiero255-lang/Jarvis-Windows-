@@ -1,3 +1,6 @@
+param(
+    [Parameter(Mandatory=$true)][string]$InstallerPath
+)
 # Disposable Windows CI only: real SHA-pinned Ollama v0.34.0 and Qwen2.5 0.5B.
 # No paid API or cloud model; Qwen executes locally for the INSTALLED app.
 $ErrorActionPreference = "Stop"
@@ -49,20 +52,26 @@ try {
     if (-not @($models.models | Where-Object { $_.name -eq $model }).Count) {
         throw "Real Qwen model missing from local Ollama model inventory"
     }
-    # Persist only nonsecret, localhost-only flags for the actual installed
-    # GUI/backend E2E step. Never place tokens or credentials in GITHUB_ENV.
-    @(
-      "JARVIS_INSTALLED_REAL_OLLAMA=1",
-      "OLLAMA_HOST=$env:OLLAMA_HOST",
-      "OLLAMA_MODELS=$env:OLLAMA_MODELS",
-      "OLLAMA_NO_CLOUD=1",
-      "OLLAMA_NUM_PARALLEL=1",
-      "OLLAMA_KEEP_ALIVE=0"
-    ) | Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
-    Write-Host "PASS: authentic pinned Ollama + Qwen2.5 GGUF ready for installed backend."
-} catch {
+    # Keep Ollama alive in the SAME GitHub Actions step as the full native
+    # installer E2E. GITHUB_ENV carries variables, never process liveness.
+    $env:JARVIS_INSTALLED_REAL_OLLAMA = "1"
+    $health = Invoke-RestMethod "http://127.0.0.1:11434/api/tags" -TimeoutSec 10
+    if (-not @($health.models | Where-Object { $_.name -eq $model }).Count) {
+        throw "Ollama disappeared before installed-JARVIS native E2E"
+    }
+    Write-Host "PASS: verified Ollama and actual Qwen model available within E2E step."
+    & (Join-Path $PSScriptRoot "validate-installer.ps1") `
+        -InstallerPath $InstallerPath `
+        -ReceiptPath (Join-Path $env:RUNNER_TEMP "installer-smoke-proof.json")
+    if ($LASTEXITCODE -ne 0) {
+        throw "Installed GUI, Ollama, and uninstall verification returned failure"
+    }
+} finally {
+    # Explicitly stop only the process started by this step, even on failure.
+    $server.Refresh()
     if (-not $server.HasExited) {
         Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
     }
-    throw
+    $pidfile = Join-Path $env:RUNNER_TEMP "jarvis-installed-ollama.pid"
+    Remove-Item -LiteralPath $pidfile -Force -ErrorAction SilentlyContinue
 }
