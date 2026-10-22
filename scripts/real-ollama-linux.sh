@@ -47,3 +47,8 @@ fi
 image_ref="$(docker image inspect --format '{{index .RepoDigests 0}}' python:3.11-slim-bookworm)"
 python jarvis-studio-backend/isolated_repo_runner.py \
   --ci-demo --real-ollama --image-ref "$image_ref"
+
+# After the original trusted Docker oracle, verify an independent real GGUF
+# proposal inside a QEMU TCG Linux guest, then stage an explicitly authorized
+# disposable Git branch. This NEVER executes an external repository.
+JARVIS_REAL_GGUF_VM=1 bash scripts/qemu-fixture-proof.sh
