@@ -23,18 +23,13 @@ fn tray_icon() -> tauri::image::Image<'static> {
 }
 
 fn random_token() -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    let mut hasher = DefaultHasher::new();
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos()
-        .hash(&mut hasher);
-    std::process::id().hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    // Never derive a WebSocket bearer from clock/PID/non-cryptographic hashing.
+    // A cryptographically secure operating-system RNG supplies 256 bits.
+    // Fail closed if secure randomness is unavailable.
+    let mut bytes = [0u8; 32];
+    getrandom::getrandom(&mut bytes)
+        .expect("OS CSPRNG unavailable: refusing to launch unauthenticated JARVIS");
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn bundled_backend_dir(app: &tauri::App) -> Option<PathBuf> {
