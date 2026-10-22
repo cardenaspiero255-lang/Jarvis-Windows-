@@ -69,7 +69,7 @@ function ClarifyPrompt({ request, onRespond }) {
 export default function App() {
   const {
     status, messages, warnings, sysInfo, isConnected,
-    repoReview, inspectRepoZip, proposeRepoReview, approveRepoReview, exportRepoReview, rollbackRepoReview,
+    repoReview, inspectRepoZip, proposeRepoReview, approveRepoReview, exportRepoReview, rollbackRepoReview, stageGitRepoReview,
     telemetry, netInfo, weather, schedule, uiCommand, permissionRequest, clarifyRequest, muted,
     commands, recordings, browserState, controlState, screen, alwaysOn, conversationMode,
     overlay, agentTasks, conversations, setupProgress,
@@ -607,7 +607,7 @@ export default function App() {
             setRepoReviewOpen(false);
           }}
           onInspect={inspectRepoZip} onPropose={proposeRepoReview}
-          onApprove={approveRepoReview} onRollback={rollbackRepoReview}
+          onApprove={approveRepoReview} onStageGit={stageGitRepoReview} onRollback={rollbackRepoReview}
           onExport={exportRepoReview}
         />
       )}
