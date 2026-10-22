@@ -38,11 +38,21 @@ class ExternalRepositoryPreviewTests(unittest.TestCase):
 
     def test_rejects_traversal_absolute_drive_backslash_and_metadata(self):
         for filename in ("../oops.py", "/tmp/oops.py", "C:/oops.py",
-                         "src\\oops.py", "src/./oops.py", ".git/config",
+                         "src/./oops.py", ".git/config",
                          "src/.env", "src/../../oops.py", "CON.py"):
             with self.subTest(filename=filename):
                 with self.assertRaises(RepositoryIntakeError):
                     inspect_archive(zipped({filename: "pass\n"}))
+
+    def test_raw_zip_header_backslash_rejected_even_on_windows(self):
+        # ZipInfo normalizes \ to / on Windows when *building* the test ZIP.
+        # Patch the literal central and local filename headers with same-size
+        # raw bytes to exercise the actual untrusted archive input.
+        normal = zipped({"src/oops.py": "pass\n"})
+        self.assertEqual(normal.count(b"src/oops.py"), 2)
+        crafted = normal.replace(b"src/oops.py", b"src\\oops.py")
+        with self.assertRaises(RepositoryIntakeError):
+            inspect_archive(crafted)
 
     def test_rejects_case_collisions_and_duplicate_zip_entries(self):
         with self.assertRaises(RepositoryIntakeError):
@@ -95,7 +105,7 @@ class ExternalRepositoryPreviewTests(unittest.TestCase):
         self.assertIn("quantity * unit_price", patch["diff"])
         self.assertEqual(patch["verification"], "ast_syntax_only_no_external_tests")
         self.assertFalse(patch["execution_allowed"])
-        self.assertEqual((fixture / "src/pricing.py").read_bytes(),
+        self.assertEqual((fixture / "src/pricing.py").read_bytes().replace(b"\r\n", b"\n"),
                          b"def line_total(unit_price, quantity):\n"
                          b"    return unit_price - quantity\n")
 
