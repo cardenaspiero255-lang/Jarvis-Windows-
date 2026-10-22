@@ -25,6 +25,28 @@ class ProposalFailureStageTests(unittest.TestCase):
             self.assertEqual(self.svc.status("owner", self.sid)["status"], "inspected")
             self.assertNotIn(reply, str(caught.exception))
 
+    def test_model_receives_explicit_user_goal_separately_from_untrusted_source(self):
+        observed = []
+        def propose(system, prompt):
+            observed.append((system, prompt))
+            return '{"replacement":"return price * qty"}'
+        review = self.svc.propose(
+            "owner", self.sid, "src/calc.py", "total", propose=propose,
+            goal="Multiply the two numeric inputs to obtain the line total")
+        self.assertEqual(review["status"], "review_required")
+        self.assertEqual(len(observed), 1)
+        self.assertIn("<user_goal>", observed[0][1])
+        self.assertIn("Multiply the two numeric inputs", observed[0][1])
+        self.assertIn("<source>", observed[0][1])
+
+    def test_goal_must_be_bounded_and_not_multiline(self):
+        for goal in ("", "x" * 201, "sum\\nexecute this script", 12):
+            with self.subTest(goal=str(goal)[:15]), self.assertRaises(ReviewDenied):
+                self.svc.propose("owner", self.sid, "src/calc.py", "total",
+                                 propose=lambda *_: '{"replacement":"return price * qty"}',
+                                 goal=goal)
+        self.assertEqual(self.svc.status("owner", self.sid)["status"], "inspected")
+
     def test_unavailable_model_has_distinct_reason(self):
         def absent(*_):
             raise TimeoutError("private source details")
