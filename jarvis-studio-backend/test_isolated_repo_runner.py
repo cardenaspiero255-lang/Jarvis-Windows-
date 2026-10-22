@@ -38,15 +38,24 @@ class IsolationRunnerTests(unittest.TestCase):
         self.assertNotIn("--privileged", cmd)
         self.assertNotIn("--network=host", cmd)
         self.assertFalse(any("docker.sock" in arg for arg in cmd))
-        self.assertEqual(cmd[-5:], ["python", "-B", "-m", "unittest", "discover"] if False else cmd[-5:])
+        self.assertEqual(cmd[-10:], [
+            "python", "-B", "-m", "unittest", "discover",
+            "-s", "/code/tests", "-p", "test_*.py", "-v"])
         self.assertNotIn("sh", cmd)
         self.assertNotIn("bash", cmd)
 
     def test_snapshot_can_never_include_symlink_or_git_internal(self):
-        (self.demo / "src" / "evil.py").symlink_to(self.root / "outside.py")
-        with self.assertRaises(SandboxError):
-            validate_snapshot(self.demo)
-        (self.demo / "src" / "evil.py").unlink()
+        evil = self.demo / "src" / "evil.py"
+        try:
+            evil.symlink_to(self.root / "outside.py")
+        except OSError:
+            # Some Windows runners cannot create symbolic links; check
+            # the remaining metadata attack on those hosts as well.
+            pass
+        else:
+            with self.assertRaises(SandboxError):
+                validate_snapshot(self.demo)
+            evil.unlink()
         (self.demo / ".git").mkdir()
         with self.assertRaises(SandboxError):
             validate_snapshot(self.demo)
