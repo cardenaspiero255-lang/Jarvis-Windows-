@@ -4,7 +4,9 @@ No actual physical microphone, Tauri window, model or PC actions involved.
 """
 import asyncio
 import json
+import secrets
 import unittest
+from unittest.mock import patch
 
 import websockets
 from server import websocket_server as wsserver
@@ -13,6 +15,12 @@ import main
 
 class LocalPermissionWireTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
+        # Real local clients must authenticate with the per-session bearer.
+        # Randomize it for each integration test and restore the module state.
+        self.local_token = secrets.token_hex(32)
+        self.token_override = patch.object(wsserver, "_REQUIRED_TOKEN", self.local_token)
+        self.token_override.start()
+        self.addCleanup(self.token_override.stop)
         self.previous = wsserver._incoming_handlers.get("permission_response")
         wsserver.register_handler("permission_response", main.handle_permission_response)
         self.server = await websockets.serve(
@@ -21,7 +29,7 @@ class LocalPermissionWireTests(unittest.IsolatedAsyncioTestCase):
         )
         self.port = self.server.sockets[0].getsockname()[1]
         self.ws = await websockets.connect(
-            f"ws://127.0.0.1:{self.port}",
+            f"ws://127.0.0.1:{self.port}/?token={self.local_token}",
             origin="http://localhost:1420",
         )
 
