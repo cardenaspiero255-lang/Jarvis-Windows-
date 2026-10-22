@@ -63,10 +63,17 @@ def _fail(status, message, **fields):
 def _task(command):
     if not isinstance(command, str) or len(command) > 200 or not _COMMAND.search(command):
         return None
-    # Do not interpret arbitrary file/path or publishing requests as fixture work.
-    if re.search(r"(?i)(?:\bgit\s+push\b|\bpush\b|\bpublica\b|\bpublish\b|"
-                 r"\b(?:C:|/home/|\\.\\./)\b|"
-                 r"\b(?:credenciales|credentials|secrets?)\b)", command):
+    # This is a fixed speech command for an OFFLINE fixture, never a request
+    # to name a path, host, URL, Git command or publication target. Deny these
+    # even when they appear after an otherwise valid "corrige el total" phrase.
+    # Conservatively reject all path separators, drive/scheme colons, tilde
+    # expansion, traversal dots and URL percent escapes.
+    if any(marker in command for marker in ("/", "\\", ":", "..", "~", "%", "@")):
+        return None
+    if re.search(r"(?i)\b(?:git|push|publish|publica\w*|publ[ií]ca\w*|"
+                 r"sube|subir|env[ií]a\w*|clona\w*|clone|fetch|"
+                 r"credenciales|credentials|secrets?|commits?|borra\w*|"
+                 r"elimina\w*|modifica\w*|cambia\w*)\b", command):
         return None
     discount = bool(_DISCOUNT.search(command))
     total = bool(_TOTAL.search(command))
@@ -151,11 +158,21 @@ def _run_git(workspace, *args):
     or inherited Git config are permitted. Not a general sandbox for
     arbitrary repositories; safe only because the fixture is pinned.
     """
-    env = os.environ.copy()
-    env["GIT_CONFIG_NOSYSTEM"] = "1"
-    env["GIT_CONFIG_GLOBAL"] = os.devnull
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    env["GIT_LFS_SKIP_SMUDGE"] = "1"
+    # Construct an allowlist rather than copying the process environment:
+    # inherited GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, GIT_CONFIG_COUNT,
+    # GIT_EXEC_PATH, hooks/templates/trace paths etc. can redirect Git outside
+    # this disposable tree even with safe fixed argv and shell=False.
+    allowed_host = ("PATH", "SystemRoot", "SYSTEMROOT", "WINDIR",
+                    "COMSPEC", "PATHEXT", "TEMP", "TMP", "LANG", "LC_ALL")
+    env = {name: os.environ[name] for name in allowed_host if name in os.environ}
+    env.update({
+        "HOME": str(workspace), "USERPROFILE": str(workspace),
+        "XDG_CONFIG_HOME": str(workspace / ".xdg"),
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_LFS_SKIP_SMUDGE": "1",
+    })
     cmd = [
         "git",
         "-c", "core.hooksPath=" + str(workspace / ".disabled-hooks"),
