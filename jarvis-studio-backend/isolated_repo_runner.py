@@ -273,10 +273,14 @@ def run_demo(image, *, workspace_root=None, proposer=None):
                 proposal = proposer(
                     "You are fixing a trusted test fixture. Reply with exactly "
                     'one JSON key "replacement" and one Python return statement.',
-                    "Repair the addition subtotal bug in this public demo: "
+                    "Task: Return the extended total: unit_price MULTIPLIED "
+                    "by quantity; not subtraction or addition.\n"
+                    "File: src/pricing.py\n"
+                    "Source:\n"
                     "def line_total(unit_price, quantity):\n"
                     "    return unit_price - quantity\n"
-                    "Only return JSON with a corrected return statement.",
+                    "Return ONLY JSON with a single replacement return "
+                    "statement and no other text.",
                 )
                 model_source = "local_ollama_gguf"
             except (ValueError, OSError, RuntimeError, TimeoutError):
