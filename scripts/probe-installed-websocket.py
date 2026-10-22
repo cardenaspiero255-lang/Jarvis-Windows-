@@ -7,6 +7,7 @@ explicitly denied malformed repository-review request. No repo/app mutation.
 from __future__ import annotations
 
 import asyncio
+import ast
 import base64
 import io
 import urllib.request
@@ -171,9 +172,23 @@ async def probe():
             raise RuntimeError("Exported reviewed ZIP hash mismatch")
         with zipfile.ZipFile(io.BytesIO(copy_blob), "r") as approved_archive:
             patched = approved_archive.read("calc.py")
-        if (hashlib.sha256(patched).hexdigest() != proposal["patched_sha256"]
-                or b"__import__" in patched):
+        if hashlib.sha256(patched).hexdigest() != proposal["patched_sha256"]:
             raise RuntimeError("Exported source bytes differ from restricted reviewed hash")
+        # This particular disposable fixture has an independently known oracle:
+        # exactly multiplication of its two named parameters, in either order.
+        # Check syntactically; NEVER execute untrusted or model-generated code.
+        module = ast.parse(patched.decode("utf-8", "strict"))
+        if len(module.body) != 1 or not isinstance(module.body[0], ast.FunctionDef):
+            raise RuntimeError("Fixture patch changed unauthorized Python structure")
+        fn = module.body[0]
+        if fn.name != "total" or len(fn.body) != 1 or not isinstance(fn.body[0], ast.Return):
+            raise RuntimeError("Fixture proposal did not retain the sole total return")
+        expr = fn.body[0].value
+        if (not isinstance(expr, ast.BinOp) or not isinstance(expr.op, ast.Mult)
+                or not isinstance(expr.left, ast.Name)
+                or not isinstance(expr.right, ast.Name)
+                or {expr.left.id, expr.right.id} != {"price", "qty"}):
+            raise RuntimeError("Model proposal failed independent fixture multiplication oracle")
         # Rollback discards the model proposal and approved copy.
         await ws.send(json.dumps({
             "type": "repo_review.request",
@@ -200,6 +215,7 @@ async def probe():
         "review_session_rolled_back": True,
         "approved_copy_hash_matched": True,
         "reviewed_zip_export_hash_matched": True,
+        "independent_fixture_semantic_ast_oracle": True,
         "external_code_executed": False,
         "user_project_modified": False,
         "physical_power_loss_certified": False,
