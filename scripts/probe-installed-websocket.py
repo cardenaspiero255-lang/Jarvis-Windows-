@@ -1,6 +1,6 @@
 """Native authenticated WebSocket acceptance against actual installed JARVIS.exe.
 
-No mock, no Vite/dev backend. Connected to the Tauri-spawned frozen executable.
+No stubs, no Vite/dev backend. Connected to the Tauri-spawned frozen executable.
 Expect wrong-token rejection, a real 'sysinfo' event from its startup and an
 explicitly denied malformed repository-review request. No repo/app mutation.
 """
