@@ -602,7 +602,10 @@ export default function App() {
       )}
       {repoReviewOpen && (
         <RepositoryReview
-          review={repoReview} onClose={() => setRepoReviewOpen(false)}
+          review={repoReview} onClose={() => {
+            if (repoReview?.session_id) rollbackRepoReview(repoReview.session_id);
+            setRepoReviewOpen(false);
+          }}
           onInspect={inspectRepoZip} onPropose={proposeRepoReview}
           onApprove={approveRepoReview} onRollback={rollbackRepoReview}
           onExport={exportRepoReview}
