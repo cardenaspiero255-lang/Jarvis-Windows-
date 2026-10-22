@@ -55,9 +55,11 @@ class ModelSandboxIntegrationTests(unittest.TestCase):
                 proposer=lambda *_: '{"replacement":"return quantity * unit_price"}')
         self.assertTrue(report["verified"])
         self.assertEqual(len(snapshots), 2)
-        self.assertEqual(snapshots[0],
-                         b"def line_total(unit_price, quantity):\\n"
-                         b"    return unit_price - quantity\\n".replace(b"\\n", b"\n"))
+        self.assertEqual(
+            snapshots[0],
+            b"def line_total(unit_price, quantity):\n"
+            b"    return unit_price - quantity\n",
+        )
         expected = (b"def line_total(unit_price, quantity):\n"
                     b"    return quantity * unit_price\n")
         self.assertEqual(snapshots[1], expected)
