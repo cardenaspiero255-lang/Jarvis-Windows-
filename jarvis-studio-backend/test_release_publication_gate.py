@@ -35,6 +35,15 @@ class ReleasePublicationGateTests(unittest.TestCase):
         self.assertIn("physical_power_loss_certified = $false", 
                       (root / "scripts" / "verify-release-signature.ps1").read_text("utf-8"))
 
+    def test_packaged_webview_csp_disallows_script_eval(self):
+        root = Path(__file__).resolve().parent.parent
+        conf = (root / "jarvis-studio-gui" / "src-tauri" /
+                "tauri.conf.json").read_text("utf-8")
+        import json
+        csp = json.loads(conf)["app"]["security"]["csp"]
+        self.assertNotIn("'unsafe-eval'", csp)
+        self.assertIn("script-src 'self'", csp)
+
     def test_manual_dispatch_from_tag_cannot_publish_release(self):
         root = Path(__file__).resolve().parent.parent
         source = (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
