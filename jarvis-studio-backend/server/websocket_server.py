@@ -888,21 +888,17 @@ def _authorized(websocket: WebSocketServerProtocol) -> bool:
         return False
 
     if is_loopback:
-        # PRESERVED VERBATIM from the known-working backend (do NOT tighten): an
-        # allow-listed Origin is the bundled WebView (a browser forbids a web page
-        # from forging Origin, so this already rules out cross-site abuse of the
-        # local port) and is trusted WITHOUT also demanding the token — the token
-        # IPC proved fragile in the packaged app, and requiring it here is exactly
-        # what risks a HUD that silently can't connect. Originless local clients
-        # (a native tool) still need the token.
-        if origin:
-            return True
+        # Origin is only a browser CSRF filter; a native process can forge it.
+        # The Tauri HUD obtains the ephemeral CSPRNG token through get_ws_token
+        # and offers it in the WebSocket query. No token => no privileged HUD.
+        # A future IPC failure must remain an explicit connection failure,
+        # NOT silently downgrade desktop authentication.
         if not _REQUIRED_TOKEN:
-            print("[WebSocket] Rejected originless local connection with no token configured.", flush=True)
+            print("[WebSocket] Rejected local connection: bearer unconfigured.", flush=True)
             return False
         token = _offered_bearer(websocket)
         if not token or not hmac.compare_digest(token, _REQUIRED_TOKEN):
-            print("[WebSocket] Rejected originless local connection: token mismatch.", flush=True)
+            print("[WebSocket] Rejected local connection: bearer mismatch.", flush=True)
             return False
         return True
 
