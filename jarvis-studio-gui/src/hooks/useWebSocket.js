@@ -671,6 +671,11 @@ export function useWebSocket() {
   const rollbackRepoReview = useCallback((session_id) =>
     wsSend({ type: "repo_review.request", data: { action: "rollback", session_id } }),
   [wsSend]);
+  const stageGitRepoReview = useCallback((session_id, repo_root, expected_sha256) =>
+    wsSend({ type: "repo_review.request",
+      data: { action: "stage_git", session_id, repo_root,
+        expected_sha256, approved: true } }),
+  [wsSend]);
 
   // ── Remote mobile control senders ───────────────────────────────────────
   // Mint a fresh QR pairing challenge (the payload streams back as device.pairing).
@@ -695,7 +700,7 @@ export function useWebSocket() {
   }, [wsSend]);
 
   return {
-    repoReview, inspectRepoZip, proposeRepoReview, approveRepoReview, exportRepoReview, rollbackRepoReview,
+    repoReview, inspectRepoZip, proposeRepoReview, approveRepoReview, exportRepoReview, rollbackRepoReview, stageGitRepoReview,
     status, messages, warnings, sysInfo, isConnected, wakeTriggered, ocrResult,
     telemetry, netInfo, weather, schedule, uiCommand, permissionRequest, clarifyRequest, muted,
     commands, recordings, browserState, controlState, screen, alwaysOn, conversationMode,
