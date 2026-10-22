@@ -24,7 +24,9 @@ class IsolationWorkflowTests(unittest.TestCase):
         self.assertIn("real-gguf-sandbox:", text)
         self.assertIn("needs: isolated-multimodule-tests", text)
         self.assertIn("./scripts/real-ollama-linux.sh", text)
-        self.assertIn("--real-ollama", text)
+        linux_script = (Path(__file__).resolve().parents[1]
+                        / "scripts" / "real-ollama-linux.sh")
+        self.assertIn("--real-ollama", linux_script.read_text(encoding="utf-8"))
         self.assertIn("jarvis-gguf-isolated-proof", text)
         self.assertIn("head.repo.full_name == github.repository", text)
 
