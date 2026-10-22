@@ -46,6 +46,8 @@ $runtimePresent = $false
 $backendPresent = $false
 $installerExitCode = -1
 $uninstallerExitCode = -1
+$installedRuntimeVerified = $false
+$runtimeProofPath = Join-Path $env:RUNNER_TEMP "jarvis-installed-runtime-proof.json"
 $uninstallPath = $null
 $installedLocation = $null
 $uninstallRegistry = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
@@ -108,6 +110,22 @@ try {
         Throw "Exactly one NSIS uninstall executable is required."
     }
     $uninstallPath = $uninstaller[0].FullName
+    # A valid installer is NOT sufficient without launching its bundled GUI
+    # and verifying that it spawns a real authenticated frozen backend.
+    & (Join-Path $PSScriptRoot "probe-installed-runtime.ps1") `
+        -InstallRoot $installedLocation -ReceiptPath $runtimeProofPath
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $runtimeProofPath)) {
+        throw "Real installed JARVIS runtime did not produce a receipt"
+    }
+    $runtimeReceipt = Get-Content -LiteralPath $runtimeProofPath -Raw | ConvertFrom-Json
+    if ($runtimeReceipt.success -ne $true -or
+        $runtimeReceipt.child_frozen_backend_observed -ne $true -or
+        $runtimeReceipt.native_authenticated_websocket_verified -ne $true -or
+        $runtimeReceipt.wrong_token_rejected -ne $true -or
+        $runtimeReceipt.backend_process_terminated_with_gui -ne $true) {
+        throw "Real installed GUI/backend WebSocket acceptance failed"
+    }
+    $installedRuntimeVerified = $true
     $uninstallerExitCode = Invoke-BoundedProcess $uninstallPath @("/S", "_?=$installedLocation") 180
     Start-Sleep -Seconds 3
     if (Test-Path -LiteralPath $gui -PathType Leaf) {
@@ -118,7 +136,7 @@ try {
     # Evidence is produced even when a required operation failed. Never
     # claim success just because NSIS returned exit code zero.
     $success = ($installerExitCode -eq 0 -and $uninstallerExitCode -eq 0 -and
-        $runtimePresent -and $backendPresent -and $uninstalled)
+        $runtimePresent -and $backendPresent -and $uninstalled -and $installedRuntimeVerified)
     $report = [ordered]@{
         schema = "jarvis-installer-smoke-v1"
         platform = "ephemeral-github-windows-runner"
@@ -128,13 +146,16 @@ try {
         expected_executable = "jarvis-studio-gui.exe"
         installer_exit_code = $installerExitCode
         frozen_backend_found = [bool]$backendPresent
+        installed_runtime_verified = [bool]$installedRuntimeVerified
+        runtime_receipt = "jarvis-installed-runtime-proof.json"
         gui_executable_found = [bool]$runtimePresent
         uninstaller_exit_code = $uninstallerExitCode
         uninstall_removed_gui = [bool]$uninstalled
         installer_code_signature_status = (Get-AuthenticodeSignature -LiteralPath $Installer).Status.ToString()
         installation_mode = "currentUser"
-        gui_launched = $false
+        gui_launched = [bool]$installedRuntimeVerified
         application_functional_acceptance = $false
+        installed_runtime_ws_acceptance = [bool]$installedRuntimeVerified
         physical_power_loss_certified = $false
         success = [bool]$success
     }
