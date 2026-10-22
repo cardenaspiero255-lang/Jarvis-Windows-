@@ -139,6 +139,7 @@ def build_container_argv(snapshot, image, container_name=None):
         "--log-driver=local",
         "--log-opt=max-size=1m",
         "--log-opt=max-file=1",
+        "--log-opt=compress=false",
         "--mount=type=bind,source=" + str(p) + ",target=/code,readonly",
         "--workdir=/code",
         "--env=PYTHONPATH=/code/src",
