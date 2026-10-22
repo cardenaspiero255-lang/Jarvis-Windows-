@@ -7,6 +7,10 @@ explicitly denied malformed repository-review request. No repo/app mutation.
 from __future__ import annotations
 
 import asyncio
+import base64
+import io
+import urllib.request
+import zipfile
 import hashlib
 import json
 import os
@@ -73,6 +77,70 @@ async def probe():
                 break
         if not denied:
             raise RuntimeError("Installed review API did not fail closed on missing consent")
+        # Run a real model-backed code review against a fixed PUBLIC ZIP only.
+        # The installed backend's own localhost Ollama adapter must generate
+        # a syntax-checked proposal. We NEVER approve or export the changes.
+        if os.environ.get("JARVIS_INSTALLED_REAL_OLLAMA") != "1":
+            raise RuntimeError("Real local Ollama flag absent; refuse fake GGUF PASS")
+        with urllib.request.urlopen(
+            "http://127.0.0.1:11434/api/tags", timeout=5
+        ) as tags_response:
+            tags = json.load(tags_response)
+        models = [str(m.get("name", "")) for m in tags.get("models", [])]
+        if not any(x == "qwen2.5-coder:0.5b" for x in models):
+            raise RuntimeError("Authentic local Qwen model not present in Ollama")
+        data = io.BytesIO()
+        with zipfile.ZipFile(data, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("calc.py", "# Total should multiply price by quantity.\n"
+                       "def total(price, qty):\n    return price - qty\n")
+        await ws.send(json.dumps({
+            "type": "repo_review.request",
+            "data": {"action": "inspect", "consent": True,
+                     "zip_b64": base64.b64encode(data.getvalue()).decode()},
+        }))
+        sid = None
+        for _ in range(20):
+            event = json.loads(await asyncio.wait_for(ws.recv(), timeout=12))
+            if event.get("event") != "repo_review_state":
+                continue
+            data = event.get("data") or {}
+            if data.get("status") != "inspected":
+                raise RuntimeError("Installed backend rejected trusted static ZIP")
+            sid = data.get("session_id")
+            break
+        if not sid:
+            raise RuntimeError("Real ZIP inspection did not return session id")
+        await ws.send(json.dumps({
+            "type": "repo_review.request",
+            "data": {"action": "propose", "consent": True,
+                     "session_id": sid, "path": "calc.py", "function": "total"},
+        }))
+        proposal = None
+        for _ in range(30):
+            try:
+                event = json.loads(await asyncio.wait_for(ws.recv(), timeout=12))
+            except asyncio.TimeoutError:
+                continue
+            if event.get("event") == "repo_review_state":
+                proposal = event.get("data") or {}
+                break
+        if (not proposal or proposal.get("status") != "review_required"
+                or not proposal.get("patched_sha256")
+                or "+    return " not in proposal.get("diff", "")):
+            raise RuntimeError("Real Ollama proposal was not accepted by installed review agent")
+        # A rejected or otherwise failed rollback must not be claimed as success.
+        await ws.send(json.dumps({
+            "type": "repo_review.request",
+            "data": {"action": "rollback", "session_id": sid},
+        }))
+        rolled_back = False
+        for _ in range(25):
+            event = json.loads(await asyncio.wait_for(ws.recv(), timeout=8))
+            if event.get("event") == "repo_review_state":
+                rolled_back = (event.get("data") or {}).get("status") == "rolled_back"
+                break
+        if not rolled_back:
+            raise RuntimeError("Installed local Ollama review did not clean up its session")
     return {
         "status": "real_installed_runtime_ws_verified",
         "authenticated_real_sysinfo": True,
@@ -80,7 +148,10 @@ async def probe():
         "review_without_consent_denied": True,
         "backend_protocol": "websockets-v12",
         "ws_url_sha256": hashlib.sha256(b"ws://127.0.0.1:8765").hexdigest(),
-        "ollama_gguf_execution_in_this_probe": False,
+        "ollama_gguf_execution_in_this_probe": True,
+        "ollama_model": "qwen2.5-coder:0.5b",
+        "trusted_static_zip_model_proposal": True,
+        "review_session_rolled_back": True,
         "external_code_executed": False,
         "user_project_modified": False,
         "physical_power_loss_certified": False,
