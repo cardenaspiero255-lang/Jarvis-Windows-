@@ -36,6 +36,44 @@ class ModelSandboxIntegrationTests(unittest.TestCase):
         self.assertEqual(result["publication"], "none")
         self.assertTrue(result["all_containers_cleaned"])
 
+    def test_one_rejected_ast_gets_one_safe_retry(self):
+        attempts = []
+        def model(system, prompt):
+            attempts.append(prompt)
+            return ("{\"replacement\":\"return abs(unit_price * quantity)\"}"
+                    if len(attempts) == 1
+                    else "{\"replacement\":\"return unit_price * quantity\"}")
+        stages = [
+            {"passed": False, "status": "tests_failed", "tests_reported": 11,
+             "container_cleaned": True},
+            {"passed": True, "status": "passed", "tests_reported": 11,
+             "container_cleaned": True},
+        ]
+        with mock.patch("isolated_repo_runner.run_container_tests",
+                        side_effect=stages) as run:
+            report = run_demo(IMAGE, workspace_root=Path(self.temp.name),
+                              proposer=model)
+        self.assertTrue(report["verified"])
+        self.assertEqual(report["model_attempts"], 2)
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(run.call_count, 2)
+
+    def test_retry_is_bounded_and_does_not_run_corrected_tests_if_rejected(self):
+        attempts = []
+        def unsafe(*_):
+            attempts.append(1)
+            return '{"replacement":"return open(\"/etc/passwd\").read()"}'
+        with mock.patch("isolated_repo_runner.run_container_tests",
+                        return_value={"passed": False, "status": "tests_failed",
+                                      "tests_reported": 11,
+                                      "container_cleaned": True}) as run:
+            report = run_demo(IMAGE, workspace_root=Path(self.temp.name),
+                              proposer=unsafe)
+        self.assertFalse(report["verified"])
+        self.assertEqual(report["status"], "proposal_rejected")
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(run.call_count, 1)
+
     def test_model_failure_does_not_run_second_container(self):
         def bad(*_):
             return '{"replacement":"return __import__(\"os\").system(\"id\")"}'
