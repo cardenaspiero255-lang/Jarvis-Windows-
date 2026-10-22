@@ -77,10 +77,16 @@ class RepositoryReviewAPI:
                     result = self.sessions.status(owner, data.get("session_id"))
                 else:
                     raise ReviewDenied("Unsupported repository review action")
-        except (ReviewDenied, CodingTaskError, TimeoutError, OSError, ValueError):
-            # Return only the session ID already owned by this sender so the
-            # desktop can discard a rejected review instead of leaking it until TTL.
-            error = {"status": "denied", "error": "Request rejected or local model unavailable"}
+        except (ReviewDenied, CodingTaskError, TimeoutError, OSError, ValueError) as exc:
+            # Expose only a fixed, low-cardinality machine-readable rejection
+            # stage to the originating local owner; no source/model text.
+            allowed = {"JSON_FORMAT", "AST_POLICY", "NO_MATERIAL_CHANGE",
+                       "PATCH_VALIDATION", "MODEL_UNAVAILABLE", "REQUEST_REJECTED"}
+            reason = getattr(exc, "reason_code", "REQUEST_REJECTED")
+            if reason not in allowed:
+                reason = "REQUEST_REJECTED"
+            error = {"status": "denied", "reason_code": reason,
+                     "error": "Request rejected or local model unavailable"}
             try:
                 sid = data.get("session_id")
                 self.sessions.status(owner, sid)
