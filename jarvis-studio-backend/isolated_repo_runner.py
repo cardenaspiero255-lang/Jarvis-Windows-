@@ -249,26 +249,55 @@ def apply_vetted_demo_fix(snapshot, raw_proposal):
     }
 
 
-def run_demo(image, *, workspace_root=None):
-    """Fail-first then pass with known-safe edit entirely tested inside Docker."""
+def run_demo(image, *, workspace_root=None, proposer=None):
+    """Test trusted baseline in Docker, obtain vetted proposal, retest in Docker.
+
+    The model receives only a public fixture and cannot select paths, commands
+    or containers. The sole test executor remains the isolated Linux container.
+    """
     with tempfile.TemporaryDirectory(prefix="jarvis-isolation-host-",
                                     dir=str(workspace_root) if workspace_root else None) as scratch:
         os.chmod(scratch, 0o755)
         snapshot = prepare_demo_snapshot(scratch)
         baseline = run_container_tests(snapshot, image)
-        print("Docker baseline:", baseline.get("status"), "cleaned:", baseline.get("container_cleaned"))
-        if baseline["passed"] or baseline["status"] != "tests_failed":
+        print("Docker baseline:", baseline.get("status"),
+              "cleaned:", baseline.get("container_cleaned"))
+        if (baseline.get("passed") or baseline.get("status") != "tests_failed"
+                or baseline.get("container_cleaned") is not True
+                or baseline.get("tests_reported") != 11):
             return {"verified": False, "status": "invalid_baseline"}
-        patch = apply_vetted_demo_fix(
-            snapshot, '{"replacement":"return unit_price * quantity"}')
+        proposal = '{"replacement":"return unit_price * quantity"}'
+        model_source = "deterministic_test_fixture"
+        if proposer is not None:
+            try:
+                proposal = proposer(
+                    "You are fixing a trusted test fixture. Reply with exactly "
+                    'one JSON key "replacement" and one Python return statement.',
+                    "Repair the addition subtotal bug in this public demo: "
+                    "def line_total(unit_price, quantity):\n"
+                    "    return unit_price - quantity\n"
+                    "Only return JSON with a corrected return statement.",
+                )
+                model_source = "local_ollama_gguf"
+            except (ValueError, OSError, RuntimeError, TimeoutError):
+                return {"verified": False, "status": "model_unavailable"}
+        try:
+            patch = apply_vetted_demo_fix(snapshot, proposal)
+        except (SandboxError, ValueError, TypeError, ArithmeticError):
+            return {"verified": False, "status": "proposal_rejected"}
         after = run_container_tests(snapshot, image)
-        print("Docker corrected:", after.get("status"), "cleaned:", after.get("container_cleaned"))
+        print("Docker corrected:", after.get("status"),
+              "cleaned:", after.get("container_cleaned"))
+        success = (after.get("passed") is True
+                   and after.get("tests_reported") == 11
+                   and after.get("container_cleaned") is True)
         return {
-            "verified": after["passed"] and after["tests_reported"] == 11,
-            "status": "verified" if after["passed"] and after["tests_reported"] == 11
-                      else "tests_failed",
-            "baseline_passed": baseline["passed"],
-            "tests_after": after["tests_reported"],
+            "verified": success,
+            "status": "verified" if success else "tests_failed",
+            "baseline_passed": False,
+            "tests_after": after.get("tests_reported", 0),
+            "all_containers_cleaned": after.get("container_cleaned") is True,
+            "model_source": model_source,
             "modified_files": patch["modified_files"],
             "source_sha256": patch["sha256"],
             "execution_platform": "linux_docker_not_windows",
@@ -282,8 +311,20 @@ def main():
     parser = argparse.ArgumentParser(description="Isolated trusted fixture test")
     parser.add_argument("--ci-demo", action="store_true", required=True)
     parser.add_argument("--image-ref", required=True)
+    parser.add_argument("--real-ollama", action="store_true")
     args = parser.parse_args()
-    report = run_demo(args.image_ref)
+    model_evidence = None
+    propose = None
+    if args.real_ollama:
+        # Proven local GGUF model on this *disposable Linux CI host* only.
+        from real_local_model_e2e import get_model_evidence
+        from local_coding_pipeline import ollama_proposer
+        model_evidence = get_model_evidence("http://127.0.0.1:11434",
+                                            "qwen2.5-coder:0.5b")
+        propose = ollama_proposer("http://127.0.0.1:11434", "qwen2.5-coder:0.5b")
+    report = run_demo(args.image_ref, proposer=propose)
+    if model_evidence is not None:
+        report["local_model"] = model_evidence
     destination = Path(os.environ.get("RUNNER_TEMP", tempfile.gettempdir())) / "jarvis-isolation-proof.json"
     destination.write_text(json.dumps(report, indent=2), encoding="utf-8")
     if not report.get("verified"):
