@@ -62,6 +62,7 @@ import places
 import whatsapp_channel
 import activity
 import agents
+from repository_review_api import RepositoryReviewAPI
 # First-run asset provisioning is OPTIONAL. If the module is missing from a frozen
 # build, or fails to import for any reason, the backend MUST still start — the
 # assets then fall back to lazy download-on-first-use. Never let it brick startup.
@@ -3989,6 +3990,17 @@ def _extract_upload_text(name: str, mime: str, blob: bytes) -> str:
         return ""
 
 
+# Session-scoped, local-GUI-only code review; never remote phone/WhatsApp.
+_repository_review_api = RepositoryReviewAPI()
+
+
+async def handle_repository_review(data) -> None:
+    await _repository_review_api.handle(
+        data, owner=current_client_id(), local=not is_current_sender_remote(),
+        send=lambda result: send_to_current("repo_review_state", result),
+    )
+
+
 async def handle_chat_upload(data) -> None:
     """A file the user attached in the chat. Images → the vision model; PDFs/text
     → extract locally then a follow-up turn (the same path JARVIS uses to 'read'
@@ -4756,6 +4768,7 @@ async def main(use_text: bool) -> None:
     register_handler("browser_control", handle_browser_control)
     register_handler("browser_panel", handle_browser_panel)
     register_handler("chat_upload", handle_chat_upload)
+    register_handler("repo_review.request", handle_repository_review)
     register_handler("set_screen", handle_set_screen)
     register_handler("set_overlay", handle_set_overlay)
     register_handler("set_always_on", handle_set_always_on)
