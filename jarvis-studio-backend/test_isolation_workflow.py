@@ -19,6 +19,15 @@ class IsolationWorkflowTests(unittest.TestCase):
         self.assertNotIn("docker.sock", text)
         self.assertNotIn("secrets.", text)
 
+    def test_real_model_and_sandbox_must_share_disposable_linux_runner(self):
+        text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("real-gguf-sandbox:", text)
+        self.assertIn("needs: isolated-multimodule-tests", text)
+        self.assertIn("./scripts/real-ollama-linux.sh", text)
+        self.assertIn("--real-ollama", text)
+        self.assertIn("jarvis-gguf-isolated-proof", text)
+        self.assertIn("head.repo.full_name == github.repository", text)
+
     def test_pr_fork_code_does_not_run(self):
         text = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("head.repo.full_name == github.repository", text)
