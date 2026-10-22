@@ -53,6 +53,32 @@ class ReleasePublicationGateTests(unittest.TestCase):
         self.assertLess(source.index("git merge-base --is-ancestor"),
                         source.index("name: Publish the release"))
 
+    def test_public_release_requires_real_installed_runtime_gate(self):
+        root = Path(__file__).resolve().parent.parent
+        source = (root / ".github" / "workflows" / "release.yml").read_text("utf-8")
+        step = source.index("name: Verify installed runtime acceptance before public release")
+        self.assertLess(source.index("name: Build the installer"), step)
+        self.assertLess(step, source.index("name: Publish the release"))
+        release_gate = source[step:source.index("name: Publish the release")]
+        for required in (
+            "if: env.PUBLISH == 'true'",
+            "websockets==12.0", "playwright==1.56.0",
+            "prepare-installed-ollama.ps1",
+            "installer-smoke-proof.json",
+            "jarvis-installed-runtime-proof.json",
+            "installed_runtime_verified",
+            "native_authenticated_websocket_verified",
+            "installed_webview_ui_verified",
+            "ollama_gguf_tested_in_installed_process",
+            "uninstall_removed_gui",
+            "approved_copy_hash_matched",
+            "exported_reviewed_zip_hash_matched",
+            "review_without_consent_denied",
+            "success -ne $true",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, release_gate)
+
     def test_manual_dispatch_from_tag_cannot_publish_release(self):
         root = Path(__file__).resolve().parent.parent
         source = (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
