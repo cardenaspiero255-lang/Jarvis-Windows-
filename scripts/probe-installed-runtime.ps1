@@ -79,7 +79,10 @@ try {
     if ($proof.status -ne "real_installed_runtime_ws_verified" -or
         $proof.negative_wrong_token_rejected -ne $true -or
         $proof.authenticated_real_sysinfo -ne $true -or
-        $proof.review_without_consent_denied -ne $true) {
+        $proof.review_without_consent_denied -ne $true -or
+        $proof.ollama_gguf_execution_in_this_probe -ne $true -or
+        $proof.trusted_static_zip_model_proposal -ne $true -or
+        $proof.review_session_rolled_back -ne $true) {
         throw "Native WebSocket receipt did not satisfy authorization conditions"
     }
     $guiProcess.Refresh()
@@ -126,10 +129,12 @@ try {
         native_authenticated_websocket_verified = [bool]($proof -and $proof.authenticated_real_sysinfo)
         wrong_token_rejected = [bool]($proof -and $proof.negative_wrong_token_rejected)
         review_without_consent_denied = [bool]($proof -and $proof.review_without_consent_denied)
-        ollama_gguf_tested_in_installed_process = $false
+        ollama_gguf_tested_in_installed_process = [bool]($proof -and $proof.ollama_gguf_execution_in_this_probe)
+        trusted_zip_model_review_generated = [bool]($proof -and $proof.trusted_static_zip_model_proposal)
+        ephemeral_review_rolled_back = [bool]($proof -and $proof.review_session_rolled_back)
         installed_gui_dom_automated = $false
         physical_power_loss_certified = $false
-        not_certified = @("full_voice_ui", "real_installed_ollama_gguf", "physical_power_loss")
+        not_certified = @("full_voice_ui", "physical_power_loss", "interactive_webview_render_inspection")
         success = [bool]$pass
     }
     $receipt | ConvertTo-Json -Depth 5 |
