@@ -124,6 +124,8 @@ try {
         platform = "ephemeral-github-windows-runner"
         installer_sha256 = $hash
         installer_size_bytes = $length
+        installed_location = $installedLocation
+        expected_executable = "jarvis-studio-gui.exe"
         installer_exit_code = $installerExitCode
         frozen_backend_found = [bool]$backendPresent
         gui_executable_found = [bool]$runtimePresent
@@ -141,4 +143,4 @@ try {
     Write-Host "Installer smoke receipt: $ReceiptPath"
 }
 if (-not $success) { Throw "Installer smoke acceptance failed" }
-Write-Host "PASS: NSIS installed JARVIS.exe + backend and uninstalled successfully. SHA256=$hash"
+Write-Host "PASS: NSIS installed jarvis-studio-gui.exe + backend and uninstalled successfully. SHA256=$hash"
