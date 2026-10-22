@@ -33,6 +33,20 @@ class WindowsInstallerAndPowercutContractTests(unittest.TestCase):
         self.assertIn("gui_launched", source)
         self.assertIn("uninstall_removed_gui", source)
 
+
+    def test_real_ollama_server_and_installed_probe_share_one_runner_step(self):
+        """GITHUB_ENV persists strings, not the Ollama server's process lifetime."""
+        workflow = (ROOT / ".github/workflows/installer-validation.yml").read_text(encoding="utf-8")
+        bootstrap = (ROOT / "scripts/prepare-installed-ollama.ps1").read_text(encoding="utf-8")
+        self.assertIn("prepare-installed-ollama.ps1 -InstallerPath", workflow)
+        self.assertNotIn("run: ./scripts/prepare-installed-ollama.ps1\\n", workflow)
+        self.assertIn("validate-installer.ps1", bootstrap)
+        self.assertIn("finally", bootstrap)
+        self.assertIn("Stop-Process", bootstrap)
+        self.assertIn("OLLAMA_HOST", bootstrap)
+        self.assertIn("api/tags", bootstrap)
+        self.assertIn("JARVIS_INSTALLED_REAL_OLLAMA", bootstrap)
+
     def test_pr_build_must_never_publish_release(self):
         workflow = (ROOT / ".github" / "workflows" / "installer-validation.yml").read_text(encoding="utf-8")
         self.assertIn("pull_request:", workflow)
