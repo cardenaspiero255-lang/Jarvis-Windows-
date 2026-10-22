@@ -39,7 +39,7 @@ class GitTransactionTests(unittest.TestCase):
         git(self.root, "-c", "user.name=Test",
             "-c", "user.email=test@example.invalid",
             "commit", "-m", "baseline")
-        self.tx = AuthorizedGitTransaction()
+        self.tx = AuthorizedGitTransaction(recovery_root=self.root.parent / 'recovery')
         self.base = self.snapshot()
 
     def snapshot(self):
