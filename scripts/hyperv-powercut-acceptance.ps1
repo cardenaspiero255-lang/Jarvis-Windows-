@@ -98,7 +98,7 @@ try {
             $session = $null
         }
 
-        # This is the critical distinction: no guest Shutdown-VM/Stop-Computer
+        # This is the critical distinction: no guest graceful-shutdown instruction
         # is sent. The host removes power from the *virtual* machine instantly.
         Stop-VM -Name $VMName -TurnOff -Force -Confirm:$false -ErrorAction Stop
         $stopped = Get-VM -Name $VMName
