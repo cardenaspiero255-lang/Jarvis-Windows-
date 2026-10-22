@@ -18,7 +18,7 @@ class InstalledRuntimeContractTests(unittest.TestCase):
         self.assertIn("probe-installed-runtime.ps1", script)
         self.assertIn("installed_runtime_verified", script)
         self.assertLess(script.index("probe-installed-runtime.ps1"),
-                        script.index("$uninstallerExitCode ="))
+                        script.index("$uninstallerExitCode = Invoke-BoundedProcess"))
         self.assertNotIn("gui_launched = $false", script)
 
     def test_packaged_gui_process_and_backend_are_separately_verified(self):
