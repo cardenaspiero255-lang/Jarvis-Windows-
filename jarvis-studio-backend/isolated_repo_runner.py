@@ -199,6 +199,11 @@ def run_container_tests(snapshot, image):
                     status = "wait_failed"
             else:
                 status = "start_failed"
+                # Public, trusted Docker CLI diagnostic only. Redact home paths
+                # and log a short message, never the fixture or model output.
+                reason = (started.stderr or "").replace("\\n", " ").replace("\\r", " ")
+                reason = re.sub(r"/home/[^ /]+", "/home/[redacted]", reason)
+                print("Docker launch error:", reason[:260])
         except subprocess.TimeoutExpired:
             status = "timeout"
         except (OSError, ValueError, UnicodeError):
