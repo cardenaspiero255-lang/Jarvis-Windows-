@@ -18,6 +18,21 @@ class WindowsInstallerAndPowercutContractTests(unittest.TestCase):
                 self.assertIn(required.lower(), source.lower())
         self.assertNotIn("exit 0 # assume", source.lower())
 
+    def test_expected_binary_is_actual_cargo_output_not_product_title(self):
+        source = (ROOT / "scripts" / "validate-installer.ps1").read_text(encoding="utf-8")
+        self.assertIn("jarvis-studio-gui.exe", source)
+        self.assertIn("Get-ItemProperty", source)
+        self.assertIn("InstallLocation", source)
+        self.assertIn("installed_location", source)
+        self.assertIn("installer-smoke-proof.json", source)
+
+    def test_installer_receipt_never_claims_untested_gui_or_electrical_power_loss(self):
+        source = (ROOT / "scripts" / "validate-installer.ps1").read_text(encoding="utf-8")
+        self.assertIn("$false", source)
+        self.assertIn("physical_power_loss_certified", source)
+        self.assertIn("gui_launched", source)
+        self.assertIn("uninstall_removed_gui", source)
+
     def test_pr_build_must_never_publish_release(self):
         workflow = (ROOT / ".github" / "workflows" / "installer-validation.yml").read_text(encoding="utf-8")
         self.assertIn("pull_request:", workflow)
