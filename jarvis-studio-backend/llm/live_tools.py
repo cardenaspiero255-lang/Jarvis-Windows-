@@ -225,6 +225,15 @@ def function_declarations(places_ok: "bool | None" = None,
             {"name": _str("App to close, e.g. 'chrome', 'spotify'.")}, ["name"]),
         _fn("open_website", "Open a URL in the default web browser.",
             {"url": _str("The full URL or domain to open.")}, ["url"]),
+        _fn("fix_sample_code_locally",
+            "Run the SAFE LOCAL CODING DEMO only when asked to fix the sample "
+            "addition function: ask installed Ollama to propose one return "
+            "statement, validate a strictly allowlisted Python AST, test 5 "
+            "arithmetic cases, save to an isolated temporary folder and "
+            "report results. Requires explicit approval. NEVER edits a real "
+            "user repository, downloads programs, or executes general model code.",
+            {"task": _str("Original voice/text task about fixing the sample addition.")},
+            ["task"]),
         _fn("test_local_ai_generation",
             "With explicit user approval, test that the configured Ollama model "
             "actually generates a bounded nonempty answer. Uses a fixed public "
@@ -586,7 +595,7 @@ def _skill_tools() -> list:
 
 GROUPS = {
     "local_ai": ("Check the health of locally configured Ollama models without "
-                 "downloading models", ("check_local_ai", "test_local_ai_generation")),
+                 "downloading models", ("check_local_ai", "test_local_ai_generation", "fix_sample_code_locally")),
     "github": ("Read real GitHub pull requests, examine code diffs and CI checks; "
                "rerun a specific PR workflow only after user approval",
                ("github_pr_review", "github_pr_rerun_ci")),
@@ -615,7 +624,7 @@ GROUPS = {
 # Cheap word cues that pre-load a group, so the common turn never pays load_tools.
 # Over-matching only costs tokens; under-matching costs a round trip, so be generous.
 _CUES = {
-    "local_ai": r"\b(ollama|modelo local|ia local|inteligencia artificial local|"
+    "local_ai": r"\b(ollama|modelo local|ia local|inteligencia artificial local|arregla la suma|corrige la suma|prueba de programaci[oó]n|"
                 r"sin internet|offline|local model|check local ai)\b",
     "github": r"\b(github|git hub|pull request|pull requests|PR[ #]+[0-9]+|repo|repositorio|"
               r"revisa (?:el )?pr|review (?:the )?pr|checks?|CI|workflow)\b",
@@ -759,6 +768,7 @@ def turn_declarations() -> list:
 _SPEC = {
     "check_local_ai": lambda a: {"type": "ollama_diagnostics"},
     "test_local_ai_generation": lambda a: {"type": "ollama_inference_probe"},
+    "fix_sample_code_locally": lambda a: {"type": "local_coding_demo", "task": a.get("task", "")},
     "github_pr_review": lambda a: {"type": "github_pr_inspect",
                                    "repo": a.get("repo", ""), "pr": a.get("pr", ""),
                                    "deep": a.get("deep") is True},
