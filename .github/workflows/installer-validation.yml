@@ -69,12 +69,39 @@ jobs:
       - name: Build lean NSIS with real frozen Python backend (no release)
         shell: pwsh
         run: ./scripts/build.ps1 -Lean
+      - name: Prove unsigned setup is blocked from PUBLIC GitHub Release
+        shell: pwsh
+        run: |
+          $setups = @(Get-ChildItem "jarvis-studio-gui/src-tauri/target/release/bundle/nsis/" -Filter "*.exe" -File)
+          if ($setups.Count -ne 1) { throw "Expected one setup for signing gate" }
+          $receipt = Join-Path $env:RUNNER_TEMP "jarvis-release-signature-proof.json"
+          try {
+            ./scripts/verify-release-signature.ps1 -InstallerPath $setups[0].FullName `
+              -ExpectedThumbprint ("0" * 40) -ReceiptPath $receipt
+          } catch {
+            Write-Host "Expected denial by Authenticode signing gate on unsigned setup."
+          }
+          if (-not (Test-Path -LiteralPath $receipt)) { throw "Missing signing gate denial evidence" }
+          $report = Get-Content -LiteralPath $receipt -Raw | ConvertFrom-Json
+          if ($report.success -ne $false -or $report.status -ne 'blocked' -or
+              $report.signature_status -eq 'Valid') {
+            throw "An unsigned or untrusted setup bypassed the public release gate"
+          }
+          Write-Host "PASS: unsigned NSIS public-release publication denied by real Authenticode API."
       - name: Verify real installed JARVIS + Ollama Qwen within one process-lifetime step
         shell: pwsh
         run: |
           $path = @(Get-ChildItem "jarvis-studio-gui/src-tauri/target/release/bundle/nsis/" -Filter "*.exe" -File)
           if ($path.Count -ne 1) { throw "Expected one NSIS installer, found $($path.Count)" }
           ./scripts/prepare-installed-ollama.ps1 -InstallerPath $path[0].FullName
+      - name: Preserve unsigned signature gate denial evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-unsigned-publication-denied
+          path: ${{ runner.temp }}/jarvis-release-signature-proof.json
+          if-no-files-found: warn
+          retention-days: 7
       - name: Preserve independent acceptance receipt
         if: always()
         uses: actions/upload-artifact@v4
