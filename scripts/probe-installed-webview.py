@@ -67,8 +67,10 @@ async def main() -> dict:
             # The settings pane must also open through a real user-facing
             # click. We do not enable permissions or microphone in CI.
             await page.get_by_role("button", name="Settings", exact=True).click()
-            if not await page.get_by_text("Settings", exact=True).first.is_visible():
-                raise RuntimeError("Settings panel did not open")
+            settings_dialog = page.get_by_role("dialog", name="Settings")
+            await settings_dialog.wait_for(state="visible", timeout=10000)
+            if not await settings_dialog.get_by_role("button", name="Close settings").is_visible():
+                raise RuntimeError("Settings panel did not expose its close control")
             # Capture an actual WebView2-rendered frame as separate
             # inspection evidence. Never substitute a synthetic screenshot.
             await page.screenshot(path=str(target), animations="disabled")
