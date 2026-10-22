@@ -17,7 +17,8 @@ import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from ollama_diagnostics import _default_post, _validate_url
+from ollama_diagnostics import _validate_url
+from urllib.request import Request, urlopen
 
 _BUGGY = "def add(a, b):\n    return a - b\n"
 _CORRECT = "def add(a, b):\n    return a + b\n"
@@ -129,6 +130,20 @@ def execute_coding_task(command, propose, *, workspace_root=None):
             "writes_to_user_repo": False}
 
 
+def _post_local(url, payload):
+    """Allow cold CPU model inference but bound time, bytes and output shape."""
+    body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    request = Request(url, data=body, headers={
+        "Content-Type": "application/json", "Accept": "application/json",
+        "User-Agent": "Jarvis-Windows-local-coding-demo",
+    }, method="POST")
+    with urlopen(request, timeout=120) as response:
+        data = response.read(32001)
+        if len(data) > 32000:
+            raise CodingTaskError("Local model response too large")
+        return json.loads(data)
+
+
 def ollama_proposer(url, model, post_json=None):
     """Make the proposal on a localhost-only Ollama instance. No cloud fallback."""
     base = _validate_url(url)
@@ -139,7 +154,7 @@ def ollama_proposer(url, model, post_json=None):
     if (host not in ("localhost", "127.0.0.1", "::1")
             or not _MODEL_NAME.fullmatch(selected) or selected.endswith(":cloud")):
         raise CodingTaskError("A locally installed non-cloud Ollama model is required.")
-    send = post_json if post_json is not None else _default_post
+    send = post_json if post_json is not None else _post_local
     def propose(system, prompt):
         data = send(base + "/api/generate", {
             "model": selected,
