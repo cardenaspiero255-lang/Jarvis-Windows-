@@ -47,36 +47,101 @@ $backendPresent = $false
 $installerExitCode = -1
 $uninstallerExitCode = -1
 $uninstallPath = $null
+$installedLocation = $null
+$uninstallRegistry = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
+$beforeKeys = @(Get-ChildItem -Path $uninstallRegistry -ErrorAction SilentlyContinue |
+    Select-Object -ExpandProperty PSChildName)
 try {
     $installerExitCode = Invoke-BoundedProcess $Installer @("/S", "/D=$root") 180
-    $deadline = (Get-Date).AddSeconds(100)
-    $gui = Join-Path $root "JARVIS.exe"
-    $backendCandidates = @(
-        (Join-Path $root "jarvis-backend\jarvis-backend.exe"),
-        (Join-Path $root "resources\jarvis-backend\jarvis-backend.exe")
-    )
+    # The Tauri product title is "JARVIS", but Cargo actually emits
+    # jarvis-studio-gui.exe. Do not assume productName renames the binary.
+    $expectedGuiName = "jarvis-studio-gui.exe"
+    $deadline = (Get-Date).AddSeconds(25)
     do {
-        $runtimePresent = Test-Path -LiteralPath $gui -PathType Leaf
-        $backendPresent = @($backendCandidates | Where-Object {
-            Test-Path -LiteralPath $_ -PathType Leaf
-        }).Count -gt 0
+        $registrations = @(
+            Get-ChildItem -Path $uninstallRegistry -ErrorAction SilentlyContinue |
+            Where-Object { $_.PSChildName -notin $beforeKeys } |
+            ForEach-Object { Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue } |
+            Where-Object { $_.DisplayName -like "JARVIS*" }
+        )
+        # Tauri NSIS currentUser can install to LocalAppData. /D is preferred,
+        # but the actual location must be learned from the installed files and
+        # the new uninstall registry entry (not guessed from display name).
+        $paths = @($root, (Join-Path $env:LOCALAPPDATA "JARVIS"))
+        $paths += @($registrations | ForEach-Object { $_.InstallLocation } |
+            Where-Object { $_ -is [string] -and $_.Length -gt 0 })
+        foreach ($candidate in ($paths | Select-Object -Unique)) {
+            $guiCandidate = Join-Path $candidate $expectedGuiName
+            if (-not (Test-Path -LiteralPath $guiCandidate -PathType Leaf)) { continue }
+            $installedLocation = $candidate
+            $gui = $guiCandidate
+            $runtimePresent = $true
+            $backendCandidates = @(
+                (Join-Path $candidate "jarvis-backend\jarvis-backend.exe"),
+                (Join-Path $candidate "resources\jarvis-backend\jarvis-backend.exe")
+            )
+            $backendPresent = @($backendCandidates | Where-Object {
+                Test-Path -LiteralPath $_ -PathType Leaf
+            }).Count -gt 0
+            if ($backendPresent) { break }
+        }
         if ($runtimePresent -and $backendPresent) { break }
         Start-Sleep -Seconds 2
     } while ((Get-Date) -lt $deadline)
     if (-not $runtimePresent -or -not $backendPresent) {
-        Throw "Installation did not contain JARVIS.exe and frozen jarvis-backend.exe."
+        Write-Host "Installer diagnostics (no success claimed): expected binary $expectedGuiName"
+        Write-Host "Proposed /D location: $root"
+        Write-Host "New JARVIS uninstall entries: $($registrations.Count)"
+        foreach ($entry in $registrations) {
+            Write-Host "Registry InstallLocation: $($entry.InstallLocation)"
+        }
+        if (Test-Path -LiteralPath $root) {
+            Get-ChildItem -LiteralPath $root -File -Recurse -ErrorAction SilentlyContinue |
+                Select-Object -First 12 -ExpandProperty Name | ForEach-Object { Write-Host "File: $_" }
+        }
+        Throw "NSIS did not install the real Tauri binary and frozen Python backend."
     }
-
-    $uninstaller = @(Get-ChildItem -LiteralPath $root -File |
-        Where-Object { $_.Name -match '^(?i:uninstall|unins.*)\.exe$' })
+    Write-Host "Discovered installed location: $installedLocation"
+    $uninstaller = @(Get-ChildItem -LiteralPath $installedLocation -File |
+        Where-Object { $_.Name -match '^(?i:uninstall|unins.*)\.exe
+    # Evidence is produced even when a required operation failed. Never
+    # claim success just because NSIS returned exit code zero.
+    $success = ($installerExitCode -eq 0 -and $uninstallerExitCode -eq 0 -and
+        $runtimePresent -and $backendPresent -and $uninstalled)
+    $report = [ordered]@{
+        schema = "jarvis-installer-smoke-v1"
+        platform = "ephemeral-github-windows-runner"
+        installer_sha256 = $hash
+        installer_size_bytes = $length
+        expected_executable = "jarvis-studio-gui.exe"
+        installed_location = $installedLocation
+        installer_exit_code = $installerExitCode
+        frozen_backend_found = [bool]$backendPresent
+        gui_executable_found = [bool]$runtimePresent
+        uninstaller_exit_code = $uninstallerExitCode
+        uninstall_removed_gui = [bool]$uninstalled
+        installer_code_signature_status = (Get-AuthenticodeSignature -LiteralPath $Installer).Status.ToString()
+        installation_mode = "currentUser"
+        gui_launched = $false
+        application_functional_acceptance = $false
+        physical_power_loss_certified = $false
+        success = [bool]$success
+    }
+    $report | ConvertTo-Json -Depth 4 |
+        Set-Content -LiteralPath $ReceiptPath -Encoding UTF8
+    Write-Host "Installer smoke receipt: $ReceiptPath"
+}
+if (-not $success) { Throw "Installer smoke acceptance failed" }
+Write-Host "PASS: NSIS installed jarvis-studio-gui.exe + backend and uninstalled successfully. SHA256=$hash"
+ })
     if ($uninstaller.Count -ne 1) {
         Throw "Exactly one NSIS uninstall executable is required."
     }
     $uninstallPath = $uninstaller[0].FullName
-    $uninstallerExitCode = Invoke-BoundedProcess $uninstallPath @("/S", "_?=$root") 180
+    $uninstallerExitCode = Invoke-BoundedProcess $uninstallPath @("/S", "_?=$installedLocation") 180
     Start-Sleep -Seconds 3
     if (Test-Path -LiteralPath $gui -PathType Leaf) {
-        Throw "Uninstall left the primary JARVIS.exe executable behind."
+        Throw "Uninstall left the primary Tauri executable behind."
     }
     $uninstalled = $true
 } finally {
