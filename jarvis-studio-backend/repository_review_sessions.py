@@ -22,6 +22,7 @@ from external_repo_preview import (
 )
 from local_coding_pipeline import parse_proposal
 from controlled_repository_agent import _expression
+from authorized_git_transaction import AuthorizedGitTransaction, GitTransactionDenied, GitRollbackIncomplete
 
 
 class ReviewDenied(ValueError):
@@ -36,16 +37,18 @@ _MAX_MODEL_SOURCE = 8192
 class RepositoryReviewSessions:
     def __init__(self):
         self._sessions = {}
+        self._git = AuthorizedGitTransaction()
 
-    def _check(self, owner, session_id):
+    def _check(self, owner, session_id, *, cleanup=False):
         if not isinstance(owner, str) or not owner or not isinstance(session_id, str):
             raise ReviewDenied("Unknown review session")
         state = self._sessions.get(session_id)
-        if (state is None or not hmac.compare_digest(state["owner"], owner)
-                or time.monotonic() - state["created"] > _TTL_SECONDS):
-            self._sessions.pop(session_id, None) if state and (
-                time.monotonic() - state["created"] > _TTL_SECONDS) else None
+        if state is None or not hmac.compare_digest(state["owner"], owner):
             raise ReviewDenied("Unknown or expired review session")
+        if time.monotonic() - state["created"] > _TTL_SECONDS and not cleanup:
+            if state.get("git_transaction") is None:
+                self._sessions.pop(session_id, None)
+            raise ReviewDenied("Review expired; rollback required")
         return state
 
     def inspect(self, owner, archive):
@@ -57,7 +60,8 @@ class RepositoryReviewSessions:
             raise ReviewDenied("Unsafe or invalid repository archive") from exc
         now = time.monotonic()
         expired = [key for key, state in self._sessions.items()
-                   if now - state["created"] > _TTL_SECONDS]
+                   if now - state["created"] > _TTL_SECONDS
+                   and state.get("git_transaction") is None]
         for key in expired:
             del self._sessions[key]
         if len(self._sessions) >= _LIMIT:
@@ -67,6 +71,7 @@ class RepositoryReviewSessions:
             "created": now, "owner": owner, "archive": archive,
             "review": None, "patch_response": None, "copy": None,
             "path": None, "function": None,
+            "git_transaction": None, "git_receipt": None,
         }
         return {**info, "status": "inspected", "session_id": session_id}
 
