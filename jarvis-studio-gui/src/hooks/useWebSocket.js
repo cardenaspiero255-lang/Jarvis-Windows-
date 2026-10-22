@@ -657,9 +657,9 @@ export function useWebSocket() {
     reader.readAsDataURL(file);
   }, [wsSend]);
 
-  const proposeRepoReview = useCallback((session_id, path, fn) =>
+  const proposeRepoReview = useCallback((session_id, path, fn, goal) =>
     wsSend({ type: "repo_review.request",
-      data: { action: "propose", session_id, path, function: fn, consent: true } }),
+      data: { action: "propose", session_id, path, function: fn, goal, consent: true } }),
   [wsSend]);
   const approveRepoReview = useCallback((session_id, expected_sha256) =>
     wsSend({ type: "repo_review.request",
