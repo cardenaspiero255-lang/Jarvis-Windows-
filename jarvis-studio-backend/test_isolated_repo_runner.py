@@ -69,7 +69,6 @@ class IsolationRunnerTests(unittest.TestCase):
             build_container_argv(self.root / "missing", IMAGE)
 
     def test_subprocess_receives_no_credentials_or_docker_redirect(self):
-        original = subprocess.run
         seen = []
         secret = {"DOCKER_HOST": "tcp://host.invalid:2375",
                   "DOCKER_CONFIG": "C:/credentials",
@@ -77,30 +76,49 @@ class IsolationRunnerTests(unittest.TestCase):
                   "AWS_SECRET_ACCESS_KEY": "private",
                   "JARVIS_PRIVATE_KEY": "private"}
         def fake_run(cmd, **opts):
-            seen.append((cmd,opts))
-            for key in secret:
+            seen.append((cmd, opts))
+            for key in ("GITHUB_TOKEN", "AWS_SECRET_ACCESS_KEY", "JARVIS_PRIVATE_KEY"):
                 self.assertNotIn(key, opts["env"])
+            self.assertEqual(opts["env"]["DOCKER_HOST"], "unix:///var/run/docker.sock")
+            self.assertNotEqual(opts["env"]["DOCKER_CONFIG"], "C:/credentials")
             self.assertFalse(opts.get("shell"))
-            self.assertLessEqual(opts["timeout"], 120)
-            return subprocess.CompletedProcess(cmd, 0, stdout="Ran 11 tests\n\nOK", stderr="")
+            self.assertLessEqual(opts["timeout"], 90)
+            if cmd[1] == "wait":
+                return subprocess.CompletedProcess(cmd, 0, stdout="0", stderr="")
+            if cmd[1] == "logs":
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="Ran 11 tests\n\nOK")
+            return subprocess.CompletedProcess(cmd, 0, stdout="id123", stderr="")
         with mock.patch.dict(os.environ, secret), \
              mock.patch("isolated_repo_runner.subprocess.run", side_effect=fake_run):
             report = run_container_tests(self.demo, IMAGE)
-        self.assertTrue(report["passed"])
+        self.assertTrue(report["passed"], report)
         self.assertEqual(report["tests_reported"], 11)
+        self.assertEqual([args[1] for args, _ in seen], ["run", "wait", "logs", "rm"])
         self.assertNotIn("super-secret", str(report))
-        self.assertEqual(len(seen), 1)
 
     def test_failed_and_timeout_containers_do_not_claim_success(self):
-        with mock.patch("isolated_repo_runner.subprocess.run",
-                        return_value=subprocess.CompletedProcess([], 1, stdout="", stderr="ERROR")):
+        def failed(cmd, **kwargs):
+            if cmd[1] == "run":
+                return subprocess.CompletedProcess(cmd, 0, stdout="id123", stderr="")
+            if cmd[1] == "wait":
+                return subprocess.CompletedProcess(cmd, 0, stdout="1", stderr="")
+            if cmd[1] == "logs":
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="Ran 11 tests\n\nOK")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        with mock.patch("isolated_repo_runner.subprocess.run", side_effect=failed):
             result = run_container_tests(self.demo, IMAGE)
         self.assertFalse(result["passed"])
-        with mock.patch("isolated_repo_runner.subprocess.run",
-                        side_effect=subprocess.TimeoutExpired(["docker"], 60)):
+        self.assertEqual(result["status"], "tests_failed")
+        def timeout(cmd, **kwargs):
+            if cmd[1] == "wait":
+                raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
+            return subprocess.CompletedProcess(cmd, 0, stdout="id123", stderr="")
+        with mock.patch("isolated_repo_runner.subprocess.run", side_effect=timeout):
             result = run_container_tests(self.demo, IMAGE)
         self.assertFalse(result["passed"])
         self.assertEqual(result["status"], "timeout")
+        self.assertTrue(result["container_cleaned"])
+
 
     def test_vetted_patch_limited_to_pricing_and_is_unexecuted_on_host(self):
         with mock.patch("subprocess.run", side_effect=AssertionError("host subprocess")):
