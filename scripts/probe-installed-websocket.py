@@ -113,7 +113,8 @@ async def probe():
         await ws.send(json.dumps({
             "type": "repo_review.request",
             "data": {"action": "propose", "consent": True,
-                     "session_id": sid, "path": "calc.py", "function": "total"},
+                     "session_id": sid, "path": "calc.py", "function": "total",
+                     "goal": "Multiply the numeric price by the numeric quantity, not subtract"},
         }))
         proposal = None
         for _ in range(30):
@@ -133,7 +134,47 @@ async def probe():
         if (not proposal.get("patched_sha256")
                 or "+    return " not in proposal.get("diff", "")):
             raise RuntimeError("Real local Ollama proposal failed diff/hash invariants")
-        # A rejected or otherwise failed rollback must not be claimed as success.
+        # The model itself must generate an AST-vetted proposal; make the
+        # separate local-only hash-bound user approval against an IN-MEMORY ZIP
+        # copy. Never create a real branch or write to a user's repository.
+        await ws.send(json.dumps({
+            "type": "repo_review.request",
+            "data": {"action": "apply_copy", "session_id": sid,
+                     "approved": True,
+                     "expected_sha256": proposal["patched_sha256"]},
+        }))
+        approved_copy = None
+        for _ in range(24):
+            event = json.loads(await asyncio.wait_for(ws.recv(), timeout=8))
+            if event.get("event") == "repo_review_state":
+                approved_copy = event.get("data") or {}
+                break
+        if (not approved_copy or approved_copy.get("status") != "copy_staged"
+                or approved_copy.get("patched_sha256") != proposal["patched_sha256"]
+                or approved_copy.get("modified_user_repo") is not False):
+            raise RuntimeError("Installed Qwen proposal did not pass separate copy/hash approval")
+        await ws.send(json.dumps({
+            "type": "repo_review.request",
+            "data": {"action": "export", "session_id": sid},
+        }))
+        export = None
+        for _ in range(24):
+            event = json.loads(await asyncio.wait_for(ws.recv(), timeout=8))
+            if event.get("event") == "repo_review_state":
+                export = event.get("data") or {}
+                break
+        if (not export or export.get("status") != "copy_staged"
+                or not isinstance(export.get("zip_b64"), str)):
+            raise RuntimeError("Installed approved memory copy could not be exported")
+        copy_blob = base64.b64decode(export["zip_b64"], validate=True)
+        if hashlib.sha256(copy_blob).hexdigest() != export.get("sha256"):
+            raise RuntimeError("Exported reviewed ZIP hash mismatch")
+        with zipfile.ZipFile(io.BytesIO(copy_blob), "r") as approved_archive:
+            patched = approved_archive.read("calc.py")
+        if (hashlib.sha256(patched).hexdigest() != proposal["patched_sha256"]
+                or b"__import__" in patched):
+            raise RuntimeError("Exported source bytes differ from restricted reviewed hash")
+        # Rollback discards the model proposal and approved copy.
         await ws.send(json.dumps({
             "type": "repo_review.request",
             "data": {"action": "rollback", "session_id": sid},
@@ -157,6 +198,8 @@ async def probe():
         "ollama_model": "qwen2.5-coder:0.5b",
         "trusted_static_zip_model_proposal": True,
         "review_session_rolled_back": True,
+        "approved_copy_hash_matched": True,
+        "reviewed_zip_export_hash_matched": True,
         "external_code_executed": False,
         "user_project_modified": False,
         "physical_power_loss_certified": False,
