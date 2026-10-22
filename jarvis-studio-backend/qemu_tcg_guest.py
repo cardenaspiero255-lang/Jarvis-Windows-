@@ -199,7 +199,14 @@ def run_vm_fixture(*, rootfs, kernel, source, expected_source_sha256):
         # mandatory even if QEMU itself exits successfully.
         if code != 0:
             raise VMGuestError("QEMU exited with nonzero status")
-        verify_serial_receipt(output, nonce, digest)
+        try:
+            verify_serial_receipt(output, nonce, digest)
+        except VMGuestError:
+            # Only the public, fixed fixture is ever booted here. Show
+            # bounded serial diagnostics to locate boot/runtime failures.
+            print("QEMU guest serial tail (trusted fixture only):")
+            print(output[-3800:])
+            raise
         return {
             "verified": True, "status": "trusted_fixture_guest_verified",
             "source_sha256": stage["source_sha256"],
