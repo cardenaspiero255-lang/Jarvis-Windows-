@@ -41,6 +41,22 @@ jobs:
           cache: npm
           cache-dependency-path: jarvis-studio-gui/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
+      - name: Parse PowerShell lab and installed-runtime scripts before packaging
+        shell: pwsh
+        run: |
+          $paths = @(
+            "scripts/validate-installer.ps1",
+            "scripts/probe-installed-runtime.ps1",
+            "scripts/prepare-installed-ollama.ps1",
+            "scripts/hyperv-powercut-acceptance.ps1"
+          )
+          foreach ($path in $paths) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path), [ref]$tokens, [ref]$errors)
+            if ($errors.Count -ne 0) { throw "PowerShell parse errors in $path: $($errors -join '; ')" }
+          }
       - name: Installer + power cut contract regression tests
         shell: pwsh
         working-directory: jarvis-studio-backend
