@@ -18,7 +18,9 @@ class RepoReviewApiTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.api = RepositoryReviewAPI()
         self.events = []
-        self.send = lambda d: self.events.append(d)
+        async def send(d):
+            self.events.append(d)
+        self.send = send
 
     async def test_remote_clients_never_enter_review_handler(self):
         await self.api.handle({"action": "inspect", "zip_b64": zip_b64(),
