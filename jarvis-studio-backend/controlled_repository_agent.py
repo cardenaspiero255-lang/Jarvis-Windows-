@@ -79,7 +79,14 @@ def _check_fixture():
     """Fail closed on changed fixtures; no user files enter the demonstration."""
     for name, expected in [*list(_EXPECTED.items()), ("README.md", _README)]:
         path = FIXTURE_ROOT.joinpath(*name.split("/"))
-        if not path.is_file() or path.is_symlink() or path.read_bytes() != expected.encode("utf-8"):
+        if not path.is_file() or path.is_symlink():
+            raise ValueError("Controlled repository fixture missing or symlinked")
+        # Git checkout may convert trusted LF to CRLF on Windows. Normalize only
+        # CRLF (never standalone CR), then compare the full pinned source bytes.
+        actual = path.read_bytes()
+        if b"\r" in actual.replace(b"\r\n", b""):
+            raise ValueError("Unexpected carriage return in fixture")
+        if actual.replace(b"\r\n", b"\n") != expected.encode("utf-8"):
             raise ValueError("Controlled repository fixture differs from pinned bytes")
 
 
