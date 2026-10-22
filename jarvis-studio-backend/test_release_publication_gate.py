@@ -44,6 +44,15 @@ class ReleasePublicationGateTests(unittest.TestCase):
         self.assertNotIn("'unsafe-eval'", csp)
         self.assertIn("script-src 'self'", csp)
 
+    def test_signed_tag_must_point_to_a_commit_already_merged_into_main(self):
+        root = Path(__file__).resolve().parent.parent
+        source = (root / ".github" / "workflows" / "release.yml").read_text("utf-8")
+        self.assertIn("fetch-depth: 0", source)
+        self.assertIn("git merge-base --is-ancestor", source)
+        self.assertIn("origin/main", source)
+        self.assertLess(source.index("git merge-base --is-ancestor"),
+                        source.index("name: Publish the release"))
+
     def test_manual_dispatch_from_tag_cannot_publish_release(self):
         root = Path(__file__).resolve().parent.parent
         source = (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
