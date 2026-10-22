@@ -272,29 +272,50 @@ def run_demo(image, *, workspace_root=None, proposer=None):
                 or baseline.get("container_cleaned") is not True
                 or baseline.get("tests_reported") != 11):
             return {"verified": False, "status": "invalid_baseline"}
-        proposal = '{"replacement":"return unit_price * quantity"}'
         model_source = "deterministic_test_fixture"
-        if proposer is not None:
-            try:
-                proposal = proposer(
-                    "You are fixing a trusted test fixture. Reply with exactly "
-                    'one JSON key "replacement" and one Python return statement.',
-                    "Task: Return the extended total: unit_price MULTIPLIED "
-                    "by quantity; not subtraction or addition.\n"
-                    "File: src/pricing.py\n"
-                    "Source:\n"
+        model_attempts = 0
+        if proposer is None:
+            patch = apply_vetted_demo_fix(
+                snapshot, '{"replacement":"return unit_price * quantity"}')
+        else:
+            model_source = "local_ollama_gguf"
+            patch = None
+            for attempt in range(1, 3):  # At most two local model calls.
+                model_attempts = attempt
+                system = (
+                    "Fix ONE Python return expression in a trusted offline "
+                    "teaching repository. Return strict JSON with exactly one "
+                    "key named replacement. No file paths, commands, prose or "
+                    "markdown. Example format: "
+                    '{"replacement":"return x * y"}.'
+                )
+                prompt = (
+                    "Task: Return the extended total: unit_price multiplied "
+                    "by quantity.\nFile: src/pricing.py\nSource:\n"
                     "def line_total(unit_price, quantity):\n"
                     "    return unit_price - quantity\n"
                     "Return ONLY JSON with a single replacement return "
-                    "statement and no other text.",
+                    "statement using unit_price, quantity and arithmetic."
                 )
-                model_source = "local_ollama_gguf"
-            except (ValueError, OSError, RuntimeError, TimeoutError):
-                return {"verified": False, "status": "model_unavailable"}
-        try:
-            patch = apply_vetted_demo_fix(snapshot, proposal)
-        except (SandboxError, ValueError, TypeError, ArithmeticError):
-            return {"verified": False, "status": "proposal_rejected"}
+                if attempt == 2:
+                    prompt += (
+                        "\nThe previous proposal failed strict AST or arithmetic "
+                        "checks. Use ONLY a return statement with the input "
+                        "variables and +, -, *, /; no calls or attributes."
+                    )
+                try:
+                    proposal = proposer(system, prompt)
+                except (ValueError, OSError, RuntimeError, TimeoutError):
+                    return {"verified": False, "status": "model_unavailable",
+                            "model_attempts": attempt}
+                try:
+                    patch = apply_vetted_demo_fix(snapshot, proposal)
+                    break
+                except (SandboxError, ValueError, TypeError, ArithmeticError):
+                    continue
+            if patch is None:
+                return {"verified": False, "status": "proposal_rejected",
+                        "model_attempts": model_attempts}
         after = run_container_tests(snapshot, image)
         print("Docker corrected:", after.get("status"),
               "cleaned:", after.get("container_cleaned"))
@@ -308,6 +329,7 @@ def run_demo(image, *, workspace_root=None, proposer=None):
             "tests_after": after.get("tests_reported", 0),
             "all_containers_cleaned": after.get("container_cleaned") is True,
             "model_source": model_source,
+            "model_attempts": model_attempts,
             "modified_files": patch["modified_files"],
             "source_sha256": patch["sha256"],
             "execution_platform": "linux_docker_not_windows",
