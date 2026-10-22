@@ -44,12 +44,19 @@ def main():
     if url != _LOCAL_URL:
         raise RuntimeError("The Windows E2E uses localhost only.")
     evidence = get_model_evidence(url, model)
+    print("PASS: local catalog confirms authentic GGUF model and model digest.")
     with tempfile.TemporaryDirectory(prefix="jarvis-real-model-") as tmp:
         proposer = ollama_proposer(url, model)
         report = execute_coding_task(
             "Jarvis corrige la suma del proyecto de prueba",
             proposer, workspace_root=Path(tmp),
         )
+        # Safe diagnostic stages only: no model text, prompts or code in logs.
+        safe_status = report.get("status") if report.get("status") in (
+            "verified_dry_run", "unsupported", "model_unavailable", "rejected",
+            "tests_failed", "workspace_error") else "unexpected_status"
+        print("Coding exercise stage:", safe_status,
+              "tests_passed:", int(report.get("tests_passed") or 0))
         if (report.get("ok") is not True or report.get("status") != "verified_dry_run"
                 or report.get("tests_passed") != 5 or report.get("tests_failed") != 0):
             raise RuntimeError("Model did not complete the vetted programming exercise.")
