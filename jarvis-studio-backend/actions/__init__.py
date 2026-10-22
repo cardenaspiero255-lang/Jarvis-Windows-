@@ -202,6 +202,11 @@ def _local_permission(spec: dict) -> "Tuple[bool, str, str]":
     # The user must approve even read-only PR inspection: metadata about private
     # code and findings may be sent to the configured language model.
     # Raw PR code is NEVER forwarded to that model.
+    if atype == "controlled_repo_repair":
+        return True, "local_coding", (
+            "repair ONE trusted offline two-module test repository on an "
+            "unpublished temporary local Git branch, verify bounded "
+            "arithmetic tests, and never touch user repos or GitHub")
     if atype == "local_coding_demo":
         return True, "local_coding", (
             "ask the local Ollama model to fix a DISPOSABLE calculator exercise "
@@ -635,6 +640,33 @@ def _run_one(spec: dict) -> dict:
                 "message": status["message"],
                 "feed_to_model": {"name": "local Ollama diagnostic",
                                   "content": _json.dumps(status, ensure_ascii=False)}}
+
+    # ── Local Git repository exercise: explicit consent required ────────────
+    if atype == "controlled_repo_repair":
+        import json as _json
+        from llm import groq_bridge as _gb
+        from local_coding_pipeline import ollama_proposer, CodingTaskError
+        from controlled_repository_agent import repair_controlled_repository
+        try:
+            proposer = ollama_proposer(_gb._ollama_url(), _gb._offline_model())
+            report = repair_controlled_repository(spec.get("task", ""), proposer)
+        except CodingTaskError:
+            report = {"ok": False, "status": "model_unavailable",
+                      "message": "A locally installed non-cloud model is required.",
+                      "tests_passed": 0, "tests_failed": 0,
+                      "published": False, "modified_user_repo": False}
+        evidence = {key: report.get(key) for key in (
+            "ok", "status", "tests_passed", "tests_failed", "modified_files",
+            "source_sha256", "branch", "published", "modified_user_repo")}
+        message = (f"Verified local Git branch: "
+                   f"{report.get('tests_passed', 0)} checks passed; "
+                   f"no changes published or made to user repositories."
+                   if report["ok"] else
+                   "Controlled local repository repair not verified: "
+                   + str(report.get("status", "error")))
+        return {"type": atype, "ok": report["ok"], "message": message,
+                "feed_to_model": {"name": "controlled local Git repair result",
+                                  "content": _json.dumps(evidence, ensure_ascii=False)}}
 
     # ── Permission-gated local coding demonstration (isolated fixture) ────────
     if atype == "local_coding_demo":
