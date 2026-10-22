@@ -58,7 +58,7 @@ class WindowsInstallerAndPowercutContractTests(unittest.TestCase):
         workflow = (ROOT / ".github" / "workflows" /
                     "installer-validation.yml").read_text("utf-8")
         packager = (ROOT / "scripts" / "package-backend.ps1").read_text("utf-8")
-        self.assertIn("pip freeze --all", packager)
+        self.assertIn("pip list --format=json", packager)
         self.assertIn("jarvis-python-build-dependencies.txt", packager)
         self.assertIn("jarvis-python-build-dependencies.txt", workflow)
 
