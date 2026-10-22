@@ -68,7 +68,7 @@ class RepositoryReviewSessions:
             "review": None, "patch_response": None, "copy": None,
             "path": None, "function": None,
         }
-        return {"status": "inspected", "session_id": session_id, **info}
+        return {**info, "status": "inspected", "session_id": session_id}
 
     def status(self, owner, session_id):
         s = self._check(owner, session_id)
@@ -114,7 +114,7 @@ class RepositoryReviewSessions:
             raise ReviewDenied("Review diff exceeds display bound")
         state.update({"review": review, "patch_response": response,
                       "path": path, "function": function})
-        return {"session_id": session_id, "status": "review_required", **review}
+        return {**review, "session_id": session_id, "status": "review_required"}
 
     def apply_copy(self, owner, session_id, expected_sha256, *, approved=False):
         state = self._check(owner, session_id)
