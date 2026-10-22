@@ -29,10 +29,18 @@ $started = $false
 $token = [Convert]::ToHexString(
     [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLowerInvariant()
 $previousToken = $env:JARVIS_WS_TOKEN
+$previousWebViewFlags = $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
+$previousWebViewData = $env:WEBVIEW2_USER_DATA_FOLDER
+$uiVerified = $false
+$uiScreenshot = Join-Path $env:RUNNER_TEMP "jarvis-installed-webview.png"
 try {
     # The GUI and its frozen backend inherit the SAME ephemeral token.
     # Never put the token on the command line, into logs or into receipts.
     $env:JARVIS_WS_TOKEN = $token
+    # Remote CDP inspection is enabled *only* for this disposable runner
+    # and is inherited by the test-created WebView2 child process.
+    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=9222 --remote-debugging-address=127.0.0.1"
+    $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $env:RUNNER_TEMP ("jarvis-ci-webview2-" + [Guid]::NewGuid().ToString("N"))
     $guiProcess = Start-Process -FilePath $gui -WorkingDirectory $root -PassThru
     $started = $true
     $deadline = (Get-Date).AddSeconds(180)
@@ -66,6 +74,23 @@ try {
     if (-not $guiAlive -or -not $backendAlive) {
         throw "Installed GUI and its child frozen backend did not start successfully"
     }
+    # Exercise real installed WebView2 via CDP before touching the model.
+    # A static React render test is not evidence of installed UI health.
+    $webviewOutput = & python scripts/probe-installed-webview.py 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Actual installed WebView2 UI interaction FAILED: $($webviewOutput | Select-Object -Last 1)"
+    }
+    $webviewLine = @($webviewOutput | Where-Object {
+        $_ -is [string] -and $_.StartsWith("PLAYWRIGHT_INSTALLED_UI_PROOF=")
+    })
+    if ($webviewLine.Count -ne 1) { throw "No real installed WebView2 UI receipt" }
+    $uiProof = $webviewLine[0].Substring("PLAYWRIGHT_INSTALLED_UI_PROOF=".Length) | ConvertFrom-Json
+    if ($uiProof.status -ne "real_installed_webview2_ui_verified" -or
+        $uiProof.repo_zip_dialog_opened_and_closed -ne $true -or
+        $uiProof.settings_opened_by_real_click -ne $true) {
+        throw "Installed WebView2 UI navigation proof incomplete"
+    }
+    $uiVerified = $true
     $probeOutput = & python scripts/probe-installed-websocket.py 2>&1
     if ($LASTEXITCODE -ne 0) {
         # Never print a bearer token; Python emits only short nonsecret errors.
@@ -95,6 +120,8 @@ try {
     }
 } finally {
     $env:JARVIS_WS_TOKEN = $previousToken
+    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $previousWebViewFlags
+    $env:WEBVIEW2_USER_DATA_FOLDER = $previousWebViewData
     if ($guiProcess) {
         try {
             $guiProcess.Refresh()
@@ -121,7 +148,7 @@ try {
         }
     }
     $pass = ($started -and $guiAlive -and $backendAlive -and
-        $cleanExit -and $backendGone -and $null -ne $proof)
+        $cleanExit -and $backendGone -and $uiVerified -and $null -ne $proof)
     $receipt = [ordered]@{
         schema = "jarvis-installed-runtime-v1"
         platform = "disposable-windows-github-runner"
@@ -130,6 +157,8 @@ try {
         child_frozen_backend_observed = [bool]$backendAlive
         backend_process_terminated_with_gui = [bool]$backendGone
         native_authenticated_websocket_verified = [bool]($proof -and $proof.authenticated_real_sysinfo)
+        installed_webview_ui_verified = [bool]$uiVerified
+        installed_webview_screenshot_available = (Test-Path -LiteralPath $uiScreenshot -PathType Leaf)
         wrong_token_rejected = [bool]($proof -and $proof.negative_wrong_token_rejected)
         forged_gui_origin_without_token_rejected = [bool]($proof -and $proof.negative_forged_gui_origin_rejected)
         review_without_consent_denied = [bool]($proof -and $proof.review_without_consent_denied)
@@ -140,7 +169,7 @@ try {
         exported_reviewed_zip_hash_matched = [bool]($proof -and $proof.reviewed_zip_export_hash_matched)
         installed_gui_dom_automated = $false
         physical_power_loss_certified = $false
-        not_certified = @("full_voice_ui", "physical_power_loss", "interactive_webview_render_inspection")
+        not_certified = @("physical_microphone_and_wake_word", "physical_power_loss", "signed_installer")
         success = [bool]$pass
     }
     $receipt | ConvertTo-Json -Depth 5 |
