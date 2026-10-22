@@ -652,9 +652,12 @@ def _run_one(spec: dict) -> dict:
         evidence = {key: report.get(key) for key in (
             "ok", "status", "message", "tests_passed", "tests_failed",
             "latency_ms", "sha256", "writes_to_user_repo")}
+        spoken = (f"Verified local coding exercise: five checks passed "
+                  f"({report.get('tests_passed', 0)}/5); disposable dry run."
+                  if report["ok"] else
+                  (report.get("message") or "Local coding exercise was not completed."))
         return {"type": atype, "ok": report["ok"],
-                "message": (report.get("message")
-                            or "Local coding exercise was not completed."),
+                "message": spoken,
                 "feed_to_model": {"name": "verified disposable coding exercise",
                                   "content": _json.dumps(evidence, ensure_ascii=False)}}
 
