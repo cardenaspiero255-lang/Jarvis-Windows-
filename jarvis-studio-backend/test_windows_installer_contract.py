@@ -54,6 +54,14 @@ class WindowsInstallerAndPowercutContractTests(unittest.TestCase):
         self.assertIn("jarvis-release-signature-proof.json", workflow)
         self.assertIn("expected denial", workflow.lower())
 
+    def test_resolved_python_release_dependency_bill_is_attached(self):
+        workflow = (ROOT / ".github" / "workflows" /
+                    "installer-validation.yml").read_text("utf-8")
+        packager = (ROOT / "scripts" / "package-backend.ps1").read_text("utf-8")
+        self.assertIn("pip freeze --all", packager)
+        self.assertIn("jarvis-python-build-dependencies.txt", packager)
+        self.assertIn("jarvis-python-build-dependencies.txt", workflow)
+
     def test_pr_build_must_never_publish_release(self):
         workflow = (ROOT / ".github" / "workflows" / "installer-validation.yml").read_text(encoding="utf-8")
         self.assertIn("pull_request:", workflow)
