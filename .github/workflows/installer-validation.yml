@@ -48,6 +48,7 @@ jobs:
             "scripts/validate-installer.ps1",
             "scripts/probe-installed-runtime.ps1",
             "scripts/prepare-installed-ollama.ps1",
+            "scripts/verify-release-signature.ps1",
             "scripts/hyperv-powercut-acceptance.ps1"
           )
           foreach ($path in $paths) {
