@@ -25,6 +25,11 @@ class RecoveryBlocked(RuntimeError):
     pass
 
 
+def _recovery_crash_checkpoint(_phase):
+    """Test-only no-op; a child process can terminate at cleanup boundaries."""
+    return None
+
+
 _TRANSACTION_ID = re.compile(r"^[A-Za-z0-9_-]{24,64}$")
 _BRANCH = re.compile(r"^jarvis/review-[0-9a-f]{16}$")
 _SHA = re.compile(r"^[0-9a-f]{64}$")
@@ -245,8 +250,10 @@ def recover_entry(folder):
                 or _git(expected_worktree, "diff", "--name-only") not in ("", target_path)):
             raise RecoveryBlocked("Linked worktree HEAD or diff changed")
         _git(root, "worktree", "remove", "--force", str(expected_worktree))
+        _recovery_crash_checkpoint("after_worktree_removed")
     if branch_exists:
         _git(root, "branch", "-D", journal["branch"])
+        _recovery_crash_checkpoint("after_branch_removed")
     if _baseline(root) != baseline or _inventory(root) != files:
         raise RecoveryBlocked("Recovery did not restore exact Git snapshot")
     shutil.rmtree(directory)
