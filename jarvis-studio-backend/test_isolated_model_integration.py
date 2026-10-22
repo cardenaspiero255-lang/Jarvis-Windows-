@@ -36,6 +36,34 @@ class ModelSandboxIntegrationTests(unittest.TestCase):
         self.assertEqual(result["publication"], "none")
         self.assertTrue(result["all_containers_cleaned"])
 
+
+    def test_model_proposal_is_the_exact_source_tested_in_docker(self):
+        """A different valid model patch must be tested, not a hardcoded correction."""
+        import hashlib
+        snapshots = []
+        def simulated_docker(snapshot, image):
+            data = (snapshot / "src" / "pricing.py").read_bytes()
+            snapshots.append(data)
+            return ({"passed": False, "status": "tests_failed", "tests_reported": 11,
+                     "container_cleaned": True} if len(snapshots) == 1 else
+                    {"passed": True, "status": "passed", "tests_reported": 11,
+                     "container_cleaned": True})
+        with mock.patch("isolated_repo_runner.run_container_tests",
+                        side_effect=simulated_docker):
+            report = run_demo(
+                IMAGE, workspace_root=Path(self.temp.name),
+                proposer=lambda *_: '{"replacement":"return quantity * unit_price"}')
+        self.assertTrue(report["verified"])
+        self.assertEqual(len(snapshots), 2)
+        self.assertEqual(snapshots[0],
+                         b"def line_total(unit_price, quantity):\\n"
+                         b"    return unit_price - quantity\\n".replace(b"\\n", b"\n"))
+        expected = (b"def line_total(unit_price, quantity):\n"
+                    b"    return quantity * unit_price\n")
+        self.assertEqual(snapshots[1], expected)
+        self.assertEqual(report["source_sha256"], hashlib.sha256(expected).hexdigest())
+        self.assertEqual(report["model_source"], "local_ollama_gguf")
+
     def test_one_rejected_ast_gets_one_safe_retry(self):
         attempts = []
         def model(system, prompt):
