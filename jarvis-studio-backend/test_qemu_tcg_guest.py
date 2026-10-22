@@ -56,7 +56,7 @@ class QemuTCGGuestTests(unittest.TestCase):
             detail = stage_vm_guest(root, PATCH, "testnonce")
             self.assertEqual(detail["source_sha256"], hashlib.sha256(PATCH).hexdigest())
             self.assertEqual((root / "work" / "pricing.py").read_bytes(), PATCH)
-            self.assertIn("JARVIS_VM_GUEST", (root / "init").read_text())
+            self.assertIn("JARVIS_VM_GUEST", (root / "work" / "guest_tests.py").read_text())
 
     def test_untrusted_repo_is_not_implicitly_executable(self):
         with tempfile.TemporaryDirectory() as d:
