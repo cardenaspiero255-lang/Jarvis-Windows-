@@ -267,7 +267,7 @@ def recover_entry(folder):
         observed = set(changed.splitlines()) if changed else set()
         expected = set()
         if staged_digest == journal["patched_sha256"]:
-            expected.add(" M " + target_path)
+            expected.add("M " + target_path)
         if partial_exists:
             relative_temp = (PurePosixPath(target_path).parent / temp_name).as_posix()
             expected.add("?? " + relative_temp)
