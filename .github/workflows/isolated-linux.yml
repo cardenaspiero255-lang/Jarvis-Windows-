@@ -1,0 +1,54 @@
+# This job never runs project code directly on Windows or Linux host.
+# Only tests from a fixed, small fixture run inside a locked-down Docker container.
+name: Isolated Linux Fixture E2E
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/isolated-linux.yml'
+      - 'jarvis-studio-backend/isolated_repo_runner.py'
+      - 'jarvis-studio-backend/test_isolated_repo_runner.py'
+      - 'jarvis-studio-backend/test_isolation_workflow.py'
+      - 'jarvis-studio-backend/fixtures/isolation_repo/**'
+      - 'jarvis-studio-backend/controlled_repository_agent.py'
+      - 'jarvis-studio-backend/local_coding_pipeline.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: isolated-linux-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  isolated-multimodule-tests:
+    # Fork PRs must never trigger code from an untrusted contribution.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Fetch official Python container image on disposable Linux runner
+        shell: bash
+        run: docker pull python:3.11-slim-bookworm
+      - name: Verify isolation with failing baseline and successful patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_ref="$(docker image inspect --format '{{index .RepoDigests 0}}' python:3.11-slim-bookworm)"
+          python jarvis-studio-backend/isolated_repo_runner.py --ci-demo --image-ref "$image_ref"
+      - name: Upload nonsecret isolation receipt
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-isolation-proof
+          path: ${{ runner.temp }}/jarvis-isolation-proof.json
+          retention-days: 7
+          if-no-files-found: error
