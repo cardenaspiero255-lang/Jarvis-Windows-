@@ -18,6 +18,8 @@ on:
       - 'jarvis-studio-backend/test_repository_review_security_matrix.py'
       - 'jarvis-studio-backend/authorized_git_transaction.py'
       - 'jarvis-studio-backend/test_authorized_git_transaction.py'
+      - 'jarvis-studio-backend/durable_git_recovery.py'
+      - 'jarvis-studio-backend/test_durable_git_recovery.py'
       - 'jarvis-studio-backend/test_repository_review_git_integration.py'
       - 'jarvis-studio-backend/controlled_repository_agent.py'
       - 'jarvis-studio-backend/local_coding_pipeline.py'
@@ -46,7 +48,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Run archive and VM security contract tests
-        run: python -m unittest -v test_vm_execution_gate test_external_repo_preview test_repository_review_sessions test_repository_review_api test_repository_review_security_matrix test_authorized_git_transaction test_repository_review_git_integration
+        run: python -m unittest -v test_vm_execution_gate test_external_repo_preview test_repository_review_sessions test_repository_review_api test_repository_review_security_matrix test_authorized_git_transaction test_repository_review_git_integration test_durable_git_recovery
       - name: Record KVM availability without launching untrusted workloads
         run: python vm_execution_gate.py --ci-probe
       - name: Preserve deny-by-default capability receipt
