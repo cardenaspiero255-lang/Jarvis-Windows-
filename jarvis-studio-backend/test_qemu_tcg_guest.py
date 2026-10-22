@@ -73,7 +73,11 @@ class QemuTCGGuestTests(unittest.TestCase):
             (root / "bin").mkdir()
             (root / "usr" / "bin").mkdir()
             (root / "usr" / "bin" / "python3").write_bytes(b"trusted")
-            with mock.patch("qemu_tcg_guest.launch_guest", return_value=(0, "Linux booted")):
+            (root / "dummy-initrd.cpio.gz").write_bytes(b"fixture")
+            with mock.patch("qemu_tcg_guest._pack_cpio",
+                            return_value=root / "dummy-initrd.cpio.gz"), \
+                 mock.patch("qemu_tcg_guest.launch_guest",
+                            return_value=(0, "Linux booted")):
                 with self.assertRaises(VMGuestError):
                     run_vm_fixture(
                         rootfs=root, kernel=root / "vmlinuz",
