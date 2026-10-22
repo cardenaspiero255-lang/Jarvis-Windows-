@@ -8,6 +8,10 @@ on:
       - '.github/workflows/qemu-tcg-guest.yml'
       - 'jarvis-studio-backend/qemu_tcg_guest.py'
       - 'jarvis-studio-backend/test_qemu_tcg_guest.py'
+      - 'jarvis-studio-backend/trusted_repair_workflow.py'
+      - 'jarvis-studio-backend/test_trusted_repair_workflow.py'
+      - 'jarvis-studio-backend/real_guest_repair_e2e.py'
+      - 'jarvis-studio-backend/test_real_guest_repair_e2e.py'
       - 'scripts/qemu-fixture-proof.sh'
       - 'jarvis-studio-backend/controlled_repository_agent.py'
       - 'jarvis-studio-backend/isolated_repo_runner.py'
@@ -34,7 +38,7 @@ jobs:
           python-version: '3.11'
       - name: Verify QEMU VM guest policy contracts
         working-directory: jarvis-studio-backend
-        run: python -m unittest -v test_qemu_tcg_guest
+        run: python -m unittest -v test_qemu_tcg_guest test_trusted_repair_workflow test_real_guest_repair_e2e
       - name: Boot a real Linux guest and execute bounded fixture regression
         shell: bash
         run: bash scripts/qemu-fixture-proof.sh
