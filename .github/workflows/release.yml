@@ -18,7 +18,7 @@ jobs:
   installer:
     runs-on: windows-latest
     env:
-      PUBLISH: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+      PUBLISH: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.ENABLE_SIGNED_RELEASE == 'true' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -71,6 +71,30 @@ jobs:
           $name = "JARVIS-$($env:GITHUB_REF_NAME -replace '/', '-')-setup.exe"
           Copy-Item $exe.FullName $name
           "INSTALLER=$name" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # PUBLIC publication requires an actual Windows-trusted signer,
+      # identified by a secret thumbprint configured by the repository owner.
+      # Without a signer, only a non-public workflow artifact is produced.
+      - name: Verify pinned Authenticode publisher before public release
+        if: env.PUBLISH == 'true'
+        shell: pwsh
+        env:
+          TRUSTED_SIGNER_THUMBPRINT: ${{ secrets.WINDOWS_SIGNING_CERT_THUMBPRINT }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TRUSTED_SIGNER_THUMBPRINT)) {
+            throw "WINDOWS_SIGNING_CERT_THUMBPRINT missing; no public release"
+          }
+          ./scripts/verify-release-signature.ps1 -InstallerPath $env:INSTALLER `
+              -ExpectedThumbprint $env:TRUSTED_SIGNER_THUMBPRINT `
+              -ReceiptPath "$env:RUNNER_TEMP/jarvis-release-signature-proof.json"
+      - name: Preserve signing verification receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-release-signature-verification
+          path: ${{ runner.temp }}/jarvis-release-signature-proof.json
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Publish the release
         if: env.PUBLISH == 'true'
