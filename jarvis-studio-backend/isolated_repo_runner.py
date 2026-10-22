@@ -233,11 +233,17 @@ def apply_vetted_demo_fix(snapshot, raw_proposal):
         raise SandboxError("Unrecognized or previously modified demo source")
     try:
         text = parse_proposal(raw_proposal)
+    except CodingTaskError as exc:
+        print("Model proposal validation: invalid_json_schema")
+        raise SandboxError("Rejected unsafe model proposal") from exc
+    try:
         expr = _expression(text, ("unit_price", "quantity"))
     except CodingTaskError as exc:
-        raise SandboxError("Rejected unsafe model proposal") from exc
+        print("Model proposal validation: invalid_restricted_ast")
+        raise SandboxError("Rejected unsafe model expression") from exc
     if not all(_evaluate(expr, {"unit_price": a, "quantity": b}) == expected
                for a, b, expected in _CHECKS):
+        print("Model proposal validation: arithmetic_checks_failed")
         raise SandboxError("Proposal does not pass fixed arithmetic checks")
     # Model code is not executed on the host: AST arithmetic is interpreted by
     # a narrowly constrained evaluator already regression-tested separately.
