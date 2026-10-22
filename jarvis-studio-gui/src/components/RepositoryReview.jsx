@@ -8,6 +8,7 @@ export default function RepositoryReview({
   const [file, setFile] = useState(null);
   const [path, setPath] = useState("");
   const [fn, setFn] = useState("");
+  const [goal, setGoal] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [repoRoot, setRepoRoot] = useState("");
   const [gitConfirmed, setGitConfirmed] = useState(false);
@@ -36,7 +37,7 @@ export default function RepositoryReview({
         </header>
         <p>Static analysis only. External code is never executed, dependencies are not
           installed, and your original repository will not be modified.</p>
-        {error && <p role="alert" style={{ color: "#ff9393" }}>{review.error}</p>}
+        {error && <p role="alert" style={{ color: "#ff9393" }}>{review.error}{review.reason_code ? ` (${review.reason_code})` : ""}</p>}
         {!session && (
           <div style={{ display: "grid", gap: 8 }}>
             <label htmlFor="jarvis-repo-zip">Choose a ZIP snapshot (max. 4 MB)</label>
@@ -55,10 +56,15 @@ export default function RepositoryReview({
             <label htmlFor="jarvis-repo-fn">Function to repair (two numeric parameters)</label>
             <input id="jarvis-repo-fn" value={fn} placeholder="total"
               onChange={(e) => setFn(e.target.value)} />
-            <p>The local Ollama model will read this file for a restricted arithmetic
-              suggestion. No cloud model is used.</p>
+            <label htmlFor="jarvis-repair-goal">Desired arithmetic behavior (one line)</label>
+            <input id="jarvis-repair-goal" value={goal} maxLength={200}
+              placeholder="Multiply the price by the quantity"
+              onChange={(e) => setGoal(e.target.value)} />
+            <p>The local Ollama model will read the selected file as untrusted data
+              and propose a restricted arithmetic change for your stated goal.
+              No cloud model is used.</p>
             {action("Generate local proposal",
-              () => onPropose(session, path, fn), !path || !fn)}
+              () => onPropose(session, path, fn, goal), !path || !fn || !goal.trim())}
           </>}
           {preview && <>
             <p>Syntax only — no external tests were run. Inspect the exact diff and
