@@ -66,6 +66,8 @@ jobs:
 
       - name: Cargo check
         run: cargo check
+      - name: Native CSPRNG WebSocket bearer regression
+        run: cargo test --lib security_token_tests::websocket_token_256bit_entropy_regression -- --exact
 
   backend:
     runs-on: windows-latest
