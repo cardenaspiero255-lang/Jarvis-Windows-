@@ -78,6 +78,7 @@ try {
     $proof = $proofLine[0].Substring("JARVIS_INSTALLED_WS_PROOF=".Length) | ConvertFrom-Json
     if ($proof.status -ne "real_installed_runtime_ws_verified" -or
         $proof.negative_wrong_token_rejected -ne $true -or
+        $proof.negative_forged_gui_origin_rejected -ne $true -or
         $proof.authenticated_real_sysinfo -ne $true -or
         $proof.review_without_consent_denied -ne $true -or
         $proof.ollama_gguf_execution_in_this_probe -ne $true -or
@@ -130,6 +131,7 @@ try {
         backend_process_terminated_with_gui = [bool]$backendGone
         native_authenticated_websocket_verified = [bool]($proof -and $proof.authenticated_real_sysinfo)
         wrong_token_rejected = [bool]($proof -and $proof.negative_wrong_token_rejected)
+        forged_gui_origin_without_token_rejected = [bool]($proof -and $proof.negative_forged_gui_origin_rejected)
         review_without_consent_denied = [bool]($proof -and $proof.review_without_consent_denied)
         ollama_gguf_tested_in_installed_process = [bool]($proof -and $proof.ollama_gguf_execution_in_this_probe)
         trusted_zip_model_review_generated = [bool]($proof -and $proof.trusted_static_zip_model_proposal)
