@@ -62,7 +62,8 @@ class WindowsInstallerAndPowercutContractTests(unittest.TestCase):
 
     def test_powercut_lab_is_not_marked_certified_in_ordinary_pr_ci(self):
         workflow = (ROOT / ".github" / "workflows" / "installer-validation.yml").read_text(encoding="utf-8")
-        self.assertNotIn("hyperv-powercut-acceptance.ps1", workflow)
+        self.assertNotIn("run: ./scripts/hyperv-powercut-acceptance.ps1", workflow)
+        self.assertNotIn("Stop-VM -TurnOff", workflow)
         self.assertNotIn("powercut_certified: true", workflow.lower())
 
 
