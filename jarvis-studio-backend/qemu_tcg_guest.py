@@ -23,7 +23,8 @@ import signal
 import subprocess
 import tempfile
 
-from controlled_repository_agent import _evaluate, _expression, _CHECKS
+from controlled_repository_agent import _evaluate, _expression
+from isolated_repo_runner import _CHECKS
 from local_coding_pipeline import CodingTaskError
 
 
