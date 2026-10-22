@@ -9,6 +9,11 @@ on:
       - '.github/workflows/isolated-linux.yml'
       - 'jarvis-studio-backend/isolated_repo_runner.py'
       - 'jarvis-studio-backend/test_isolated_repo_runner.py'
+      - 'jarvis-studio-backend/test_isolated_container_lifecycle.py'
+      - 'jarvis-studio-backend/test_isolated_model_integration.py'
+      - 'jarvis-studio-backend/real_local_model_e2e.py'
+      - 'jarvis-studio-backend/ollama_diagnostics.py'
+      - 'scripts/real-ollama-linux.sh'
       - 'jarvis-studio-backend/test_isolation_workflow.py'
       - 'jarvis-studio-backend/fixtures/isolation_repo/**'
       - 'jarvis-studio-backend/controlled_repository_agent.py'
@@ -52,3 +57,29 @@ jobs:
           path: ${{ runner.temp }}/jarvis-isolation-proof.json
           retention-days: 7
           if-no-files-found: error
+
+  real-gguf-sandbox:
+    needs: isolated-multimodule-tests
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Retrieve pinned Python Docker image
+        run: docker pull python:3.11-slim-bookworm
+      - name: Local genuine GGUF proposal and isolated Docker regression
+        shell: bash
+        run: bash ./scripts/real-ollama-linux.sh
+      - name: Publish nonsecret local GGUF plus Docker receipt
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-gguf-isolated-proof
+          path: ${{ runner.temp }}/jarvis-isolation-proof.json
+          if-no-files-found: error
+          retention-days: 7
