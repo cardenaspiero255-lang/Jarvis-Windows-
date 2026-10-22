@@ -4889,6 +4889,17 @@ async def main(use_text: bool) -> None:
     _always_on_event = asyncio.Event()
     if get_always_on():
         _always_on_event.set()
+    # Reconcile interrupted, hash-journaled Git worktrees BEFORE enabling UI.
+    # A blocked recovery never resets user files and disables further Git staging.
+    # This is local-only and contains no model/source execution.
+    recovery_outcomes = await asyncio.to_thread(
+        _repository_review_api.sessions._git.recover_pending)
+    recovered = sum(1 for item in recovery_outcomes if item["status"] == "recovered")
+    blocked = sum(1 for item in recovery_outcomes if item["status"] == "blocked")
+    if recovered or blocked:
+        print(f"[GitRecovery] restart reconciliation: recovered={recovered}, "
+              f"blocked={blocked}; recoveries with interference kept on disk.",
+              flush=True)
     ws_server = await start_websocket()
     storage.ensure_dirs()       # create the user's storage folder tree
     # Read-only terminal whitelist + JARVIS's own storage folders (so it can
