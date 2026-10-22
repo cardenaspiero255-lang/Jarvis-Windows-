@@ -14,6 +14,12 @@ on:
       - 'jarvis-studio-backend/real_local_model_e2e.py'
       - 'jarvis-studio-backend/ollama_diagnostics.py'
       - 'scripts/real-ollama-linux.sh'
+      - 'scripts/qemu-fixture-proof.sh'
+      - 'jarvis-studio-backend/qemu_tcg_guest.py'
+      - 'jarvis-studio-backend/trusted_repair_workflow.py'
+      - 'jarvis-studio-backend/real_guest_repair_e2e.py'
+      - 'jarvis-studio-backend/test_trusted_repair_workflow.py'
+      - 'jarvis-studio-backend/test_real_guest_repair_e2e.py'
       - 'jarvis-studio-backend/test_isolation_workflow.py'
       - 'jarvis-studio-backend/fixtures/isolation_repo/**'
       - 'jarvis-studio-backend/controlled_repository_agent.py'
@@ -81,5 +87,14 @@ jobs:
         with:
           name: jarvis-gguf-isolated-proof
           path: ${{ runner.temp }}/jarvis-isolation-proof.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish QEMU guest + approved local Git proof
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-real-gguf-qemu-git-proof
+          path: ${{ runner.temp }}/jarvis-model-guest-repair-proof.json
           if-no-files-found: error
           retention-days: 7
