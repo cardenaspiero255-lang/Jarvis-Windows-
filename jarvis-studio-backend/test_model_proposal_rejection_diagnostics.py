@@ -40,7 +40,7 @@ class ProposalFailureStageTests(unittest.TestCase):
         self.assertIn("<source>", observed[0][1])
 
     def test_goal_must_be_bounded_and_not_multiline(self):
-        for goal in ("", "x" * 201, "sum\\nexecute this script", 12):
+        for goal in ("", "x" * 201, "sum\nexecute this script", 12):
             with self.subTest(goal=str(goal)[:15]), self.assertRaises(ReviewDenied):
                 self.svc.propose("owner", self.sid, "src/calc.py", "total",
                                  propose=lambda *_: '{"replacement":"return price * qty"}',
