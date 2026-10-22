@@ -7,7 +7,7 @@ param(
     [Parameter(Mandatory=$true)][string]$VMName,
     [Parameter(Mandatory=$true)][System.Management.Automation.PSCredential]$Credential,
     [Parameter(Mandatory=$true)][switch]$IUnderstandVirtualPowerCut,
-    [string[]]$Phases = @('after_backup','after_worktree','after_branch','after_patch','after_staged'),
+    [string[]]$Phases = @('after_backup','after_worktree','after_branch','during_patch_temp_write','after_patch_temp_fsync','after_patch_replace','after_patch','after_staged'),
     [string]$ReceiptPath = "$PWD\vm-powercut-proof.json"
 )
 Set-StrictMode -Version Latest
@@ -17,7 +17,7 @@ if (-not $IUnderstandVirtualPowerCut) { throw "Explicit virtual power cut author
 if ($VMName -cnotmatch '^JARVIS-DISPOSABLE-[A-Za-z0-9-]{3,64}$') {
     throw "Refusing to power off a non-disposable VM; requires JARVIS-DISPOSABLE-*"
 }
-$allowed = @('after_backup','after_worktree','after_branch','after_patch','after_staged')
+$allowed = @('after_backup','after_worktree','after_branch','during_patch_temp_write','after_patch_temp_fsync','after_patch_replace','after_patch','after_staged')
 foreach ($phase in $Phases) {
     if ($phase -cnotin $allowed) { throw "Unsupported power-cut phase" }
 }
