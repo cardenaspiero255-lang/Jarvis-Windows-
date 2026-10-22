@@ -32,7 +32,7 @@ def _recovery_crash_checkpoint(_phase):
 
 _TRANSACTION_ID = re.compile(r"^[A-Za-z0-9_-]{24,64}$")
 _BRANCH = re.compile(r"^jarvis/review-[0-9a-f]{16}$")
-_STAGE_TEMP = re.compile(r"^\\.jarvis-staged-[0-9a-f]{32}\\.tmp$")
+_STAGE_TEMP = re.compile(r"^\.jarvis-staged-[0-9a-f]{32}\.tmp$")
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 
 
