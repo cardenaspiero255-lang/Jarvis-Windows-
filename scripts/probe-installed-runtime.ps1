@@ -82,6 +82,8 @@ try {
         $proof.review_without_consent_denied -ne $true -or
         $proof.ollama_gguf_execution_in_this_probe -ne $true -or
         $proof.trusted_static_zip_model_proposal -ne $true -or
+        $proof.approved_copy_hash_matched -ne $true -or
+        $proof.reviewed_zip_export_hash_matched -ne $true -or
         $proof.review_session_rolled_back -ne $true) {
         throw "Native WebSocket receipt did not satisfy authorization conditions"
     }
@@ -132,6 +134,8 @@ try {
         ollama_gguf_tested_in_installed_process = [bool]($proof -and $proof.ollama_gguf_execution_in_this_probe)
         trusted_zip_model_review_generated = [bool]($proof -and $proof.trusted_static_zip_model_proposal)
         ephemeral_review_rolled_back = [bool]($proof -and $proof.review_session_rolled_back)
+        approved_copy_hash_matched = [bool]($proof -and $proof.approved_copy_hash_matched)
+        exported_reviewed_zip_hash_matched = [bool]($proof -and $proof.reviewed_zip_export_hash_matched)
         installed_gui_dom_automated = $false
         physical_power_loss_certified = $false
         not_certified = @("full_voice_ui", "physical_power_loss", "interactive_webview_render_inspection")
