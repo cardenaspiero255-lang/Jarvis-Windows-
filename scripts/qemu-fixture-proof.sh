@@ -42,9 +42,13 @@ def line_total(unit_price, quantity):
     return quantity * unit_price
 PY
 source_sha="$(sha256sum "$WORK/pricing.py" | cut -d' ' -f1)"
-python jarvis-studio-backend/qemu_tcg_guest.py \
-  --trusted-fixture \
-  --rootfs "$rootfs" \
-  --kernel "$WORK/vmlinuz-virt" \
-  --source-file "$WORK/pricing.py" \
-  --source-sha256 "$source_sha"
+if [ "${JARVIS_REAL_GGUF_VM:-0}" = "1" ]; then
+  # Model server is started by trusted real-ollama-linux.sh on this runner.
+  # Actual GGUF output, never the prewritten fallback, drives the VM/Git proof.
+  python jarvis-studio-backend/real_guest_repair_e2e.py \
+    --trusted-fixture --rootfs "$rootfs" --kernel "$WORK/vmlinuz-virt"
+else
+  python jarvis-studio-backend/qemu_tcg_guest.py \
+    --trusted-fixture --rootfs "$rootfs" --kernel "$WORK/vmlinuz-virt" \
+    --source-file "$WORK/pricing.py" --source-sha256 "$source_sha"
+fi
