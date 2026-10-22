@@ -202,6 +202,10 @@ def _local_permission(spec: dict) -> "Tuple[bool, str, str]":
     # The user must approve even read-only PR inspection: metadata about private
     # code and findings may be sent to the configured language model.
     # Raw PR code is NEVER forwarded to that model.
+    if atype == "local_coding_demo":
+        return True, "local_coding", (
+            "ask the local Ollama model to fix a DISPOSABLE calculator exercise "
+            "and run 5 strictly vetted checks; no user projects are modified")
     if atype == "ollama_inference_probe":
         return True, "ollama_inference", (
             "test the configured Ollama model with a fixed, non-personal prompt "
@@ -631,6 +635,28 @@ def _run_one(spec: dict) -> dict:
                 "message": status["message"],
                 "feed_to_model": {"name": "local Ollama diagnostic",
                                   "content": _json.dumps(status, ensure_ascii=False)}}
+
+    # ── Permission-gated local coding demonstration (isolated fixture) ────────
+    if atype == "local_coding_demo":
+        import json as _json
+        from llm import groq_bridge as _gb
+        from local_coding_pipeline import (execute_coding_task, ollama_proposer,
+                                           CodingTaskError)
+        try:
+            proposer = ollama_proposer(_gb._ollama_url(), _gb._offline_model())
+            report = execute_coding_task(spec.get("task", ""), proposer)
+        except CodingTaskError:
+            report = {"ok": False, "status": "model_unavailable",
+                      "message": "A local non-cloud Ollama model is required.",
+                      "tests_passed": 0, "tests_failed": 0}
+        evidence = {key: report.get(key) for key in (
+            "ok", "status", "message", "tests_passed", "tests_failed",
+            "latency_ms", "sha256", "writes_to_user_repo")}
+        return {"type": atype, "ok": report["ok"],
+                "message": (report.get("message")
+                            or "Local coding exercise was not completed."),
+                "feed_to_model": {"name": "verified disposable coding exercise",
+                                  "content": _json.dumps(evidence, ensure_ascii=False)}}
 
     # ── Approved inference check: no prompts or generated text forwarded ──────
     if atype == "ollama_inference_probe":
