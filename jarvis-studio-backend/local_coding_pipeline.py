@@ -114,7 +114,9 @@ def execute_coding_task(command, propose, *, workspace_root=None):
             if not base.is_dir():
                 raise OSError("Workspace root not a directory")
             folder = Path(tempfile.mkdtemp(prefix="jarvis-code-", dir=str(base)))
-        (folder / "calculator.py").write_text(candidate_source, encoding="utf-8")
+        # Windows text-mode writes translate LF to CRLF, invalidating the
+        # portable SHA-256 receipt; preserve exactly the verified source bytes.
+        (folder / "calculator.py").write_bytes(candidate_source.encode("utf-8"))
     except (OSError, ValueError):
         return _failure("workspace_error", "Unable to create a disposable workspace.")
     diff = "".join(difflib.unified_diff(
