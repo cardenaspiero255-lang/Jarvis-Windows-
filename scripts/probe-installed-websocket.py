@@ -41,6 +41,26 @@ async def _unauthorized_rejected(token: str) -> bool:
         return True
 
 
+async def _forged_gui_origin_rejected() -> bool:
+    # A native localhost client can spoof a browser Origin header. The
+    # backend must still demand the non-guessable GUI token.
+    try:
+        async with websockets.connect(
+            "ws://127.0.0.1:8765/",
+            origin="https://tauri.localhost",
+            open_timeout=4, close_timeout=1, ping_interval=None,
+        ) as ws:
+            try:
+                await asyncio.wait_for(ws.recv(), timeout=3)
+            except ConnectionClosed as closed:
+                return closed.code == 1008
+            except asyncio.TimeoutError:
+                return False
+            return False
+    except (websockets.exceptions.InvalidHandshake, OSError, ConnectionClosed):
+        return True
+
+
 async def probe():
     token = os.environ.get("JARVIS_WS_TOKEN", "")
     if len(token) < 32:
@@ -48,6 +68,8 @@ async def probe():
     rejected = await _unauthorized_rejected(token)
     if not rejected:
         raise RuntimeError("Installed backend did not reject a wrong native token")
+    if not await _forged_gui_origin_rejected():
+        raise RuntimeError("Installed backend trusted forged Tauri Origin without a bearer")
     async with websockets.connect(
         "ws://127.0.0.1:8765/?token=" + token,
         open_timeout=8, close_timeout=2, ping_interval=None,
@@ -206,6 +228,7 @@ async def probe():
         "status": "real_installed_runtime_ws_verified",
         "authenticated_real_sysinfo": True,
         "negative_wrong_token_rejected": rejected,
+        "negative_forged_gui_origin_rejected": True,
         "review_without_consent_denied": True,
         "backend_protocol": "websockets-v12",
         "ws_url_sha256": hashlib.sha256(b"ws://127.0.0.1:8765").hexdigest(),
