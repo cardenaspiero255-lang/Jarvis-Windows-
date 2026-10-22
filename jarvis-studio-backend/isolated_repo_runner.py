@@ -328,6 +328,7 @@ def main():
     destination = Path(os.environ.get("RUNNER_TEMP", tempfile.gettempdir())) / "jarvis-isolation-proof.json"
     destination.write_text(json.dumps(report, indent=2), encoding="utf-8")
     if not report.get("verified"):
+        print("Isolation failure stage:", report.get("status", "unknown"))
         print("FAIL: Linux isolation test did not prove fail-then-pass.")
         return 1
     print("PASS: Linux Docker no-network read-only fixture fail-then-pass:", report["tests_after"])
