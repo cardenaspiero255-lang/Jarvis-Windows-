@@ -31,6 +31,7 @@ class ModelSandboxIntegrationTests(unittest.TestCase):
         self.assertTrue(result["verified"])
         self.assertEqual(result["model_source"], "local_ollama_gguf")
         self.assertEqual(len(seen), 1)
+        self.assertIn("multipl", seen[0][1].lower())
         self.assertEqual(run.call_count, 2)
         self.assertEqual(result["publication"], "none")
         self.assertTrue(result["all_containers_cleaned"])
