@@ -5,6 +5,7 @@ import Settings from "./components/Settings";
 import Onboarding from "./components/Onboarding";
 import SetupProgress from "./components/SetupProgress";
 import PermissionDialog from "./components/PermissionDialog";
+import RepositoryReview from "./components/RepositoryReview";
 import BootOverlay from "./components/BootOverlay";
 import Customize from "./components/Customize";
 import AgentActivity from "./components/AgentActivity";
@@ -68,6 +69,7 @@ function ClarifyPrompt({ request, onRespond }) {
 export default function App() {
   const {
     status, messages, warnings, sysInfo, isConnected,
+    repoReview, inspectRepoZip, proposeRepoReview, approveRepoReview, exportRepoReview, rollbackRepoReview,
     telemetry, netInfo, weather, schedule, uiCommand, permissionRequest, clarifyRequest, muted,
     commands, recordings, browserState, controlState, screen, alwaysOn, conversationMode,
     overlay, agentTasks, conversations, setupProgress,
@@ -84,6 +86,7 @@ export default function App() {
 
   // App owns the overlay state so JARVIS can drive them via ui_action too.
   const [chatOpen, setChatOpen] = useState(false);
+  const [repoReviewOpen, setRepoReviewOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsPage, setSettingsPage] = useState(null);   // section to open Settings at
   const [skillsOpen, setSkillsOpen] = useState(false);
@@ -584,6 +587,25 @@ export default function App() {
           tasks={agentTasks}
           onClose={() => setActivityOpen(false)}
           onClear={clearAgentTasks}
+        />
+      )}
+
+      {/* External repository review is a local-only, explicitly requested workflow. */}
+      {isConnected && !repoReviewOpen && (
+        <button type="button" onClick={() => setRepoReviewOpen(true)}
+          aria-label="Open repository ZIP review"
+          style={{ position: "fixed", right: 16, bottom: 16, zIndex: 80,
+            border: "1px solid #c83c45", borderRadius: 12,
+            background: "#18151a", color: "#fff", padding: "10px 14px" }}>
+          Review ZIP
+        </button>
+      )}
+      {repoReviewOpen && (
+        <RepositoryReview
+          review={repoReview} onClose={() => setRepoReviewOpen(false)}
+          onInspect={inspectRepoZip} onPropose={proposeRepoReview}
+          onApprove={approveRepoReview} onRollback={rollbackRepoReview}
+          onExport={exportRepoReview}
         />
       )}
 
