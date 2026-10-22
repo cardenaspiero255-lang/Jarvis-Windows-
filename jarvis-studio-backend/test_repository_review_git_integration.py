@@ -35,6 +35,8 @@ class RepositoryReviewGitIntegrationTests(unittest.TestCase):
             z.writestr("src/calc.py", ORIGINAL)
             z.writestr("README.md", b"# fixture\n")
         self.svc = RepositoryReviewSessions()
+        from authorized_git_transaction import AuthorizedGitTransaction
+        self.svc._git = AuthorizedGitTransaction(recovery_root=Path(self.temp.name) / 'recovery')
         self.owner = "local-window"
         self.sid = self.svc.inspect(self.owner, archive.getvalue())["session_id"]
         self.preview = self.svc.propose(self.owner, self.sid, "src/calc.py", "total",
