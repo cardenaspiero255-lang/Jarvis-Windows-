@@ -103,37 +103,7 @@ try {
     }
     Write-Host "Discovered installed location: $installedLocation"
     $uninstaller = @(Get-ChildItem -LiteralPath $installedLocation -File |
-        Where-Object { $_.Name -match '^(?i:uninstall|unins.*)\.exe
-    # Evidence is produced even when a required operation failed. Never
-    # claim success just because NSIS returned exit code zero.
-    $success = ($installerExitCode -eq 0 -and $uninstallerExitCode -eq 0 -and
-        $runtimePresent -and $backendPresent -and $uninstalled)
-    $report = [ordered]@{
-        schema = "jarvis-installer-smoke-v1"
-        platform = "ephemeral-github-windows-runner"
-        installer_sha256 = $hash
-        installer_size_bytes = $length
-        expected_executable = "jarvis-studio-gui.exe"
-        installed_location = $installedLocation
-        installer_exit_code = $installerExitCode
-        frozen_backend_found = [bool]$backendPresent
-        gui_executable_found = [bool]$runtimePresent
-        uninstaller_exit_code = $uninstallerExitCode
-        uninstall_removed_gui = [bool]$uninstalled
-        installer_code_signature_status = (Get-AuthenticodeSignature -LiteralPath $Installer).Status.ToString()
-        installation_mode = "currentUser"
-        gui_launched = $false
-        application_functional_acceptance = $false
-        physical_power_loss_certified = $false
-        success = [bool]$success
-    }
-    $report | ConvertTo-Json -Depth 4 |
-        Set-Content -LiteralPath $ReceiptPath -Encoding UTF8
-    Write-Host "Installer smoke receipt: $ReceiptPath"
-}
-if (-not $success) { Throw "Installer smoke acceptance failed" }
-Write-Host "PASS: NSIS installed jarvis-studio-gui.exe + backend and uninstalled successfully. SHA256=$hash"
- })
+        Where-Object { $_.Name -match '^(?i:uninstall|unins.*)\.exe$' })
     if ($uninstaller.Count -ne 1) {
         Throw "Exactly one NSIS uninstall executable is required."
     }
