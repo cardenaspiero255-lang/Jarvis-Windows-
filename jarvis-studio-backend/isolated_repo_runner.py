@@ -250,11 +250,13 @@ def run_demo(image, *, workspace_root=None):
         os.chmod(scratch, 0o755)
         snapshot = prepare_demo_snapshot(scratch)
         baseline = run_container_tests(snapshot, image)
+        print("Docker baseline:", baseline.get("status"), "cleaned:", baseline.get("container_cleaned"))
         if baseline["passed"] or baseline["status"] != "tests_failed":
             return {"verified": False, "status": "invalid_baseline"}
         patch = apply_vetted_demo_fix(
             snapshot, '{"replacement":"return unit_price * quantity"}')
         after = run_container_tests(snapshot, image)
+        print("Docker corrected:", after.get("status"), "cleaned:", after.get("container_cleaned"))
         return {
             "verified": after["passed"] and after["tests_reported"] == 11,
             "status": "verified" if after["passed"] and after["tests_reported"] == 11
