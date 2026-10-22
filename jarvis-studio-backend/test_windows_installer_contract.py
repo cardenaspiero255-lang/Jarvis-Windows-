@@ -47,6 +47,13 @@ class WindowsInstallerAndPowercutContractTests(unittest.TestCase):
         self.assertIn("api/tags", bootstrap)
         self.assertIn("JARVIS_INSTALLED_REAL_OLLAMA", bootstrap)
 
+    def test_ci_proves_unsigned_publication_gate_refuses_installer(self):
+        workflow = (ROOT / ".github" / "workflows" /
+                    "installer-validation.yml").read_text("utf-8")
+        self.assertIn("verify-release-signature.ps1", workflow)
+        self.assertIn("jarvis-release-signature-proof.json", workflow)
+        self.assertIn("expected denial", workflow.lower())
+
     def test_pr_build_must_never_publish_release(self):
         workflow = (ROOT / ".github" / "workflows" / "installer-validation.yml").read_text(encoding="utf-8")
         self.assertIn("pull_request:", workflow)
