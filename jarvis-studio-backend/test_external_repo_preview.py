@@ -79,6 +79,26 @@ class ExternalRepositoryPreviewTests(unittest.TestCase):
         self.assertNotIn("def bad(", str(report))
         self.assertFalse(report["execution_allowed"])
 
+    def test_real_checked_in_multimodule_repo_is_previewed_without_execution(self):
+        from pathlib import Path
+        fixture = Path(__file__).resolve().parent / "fixtures" / "isolation_repo"
+        paths = ("README.md", "src/pricing.py", "src/coupons.py",
+                 "src/orders.py", "tests/test_checkout.py",
+                 "tests/test_isolation.py")
+        archive = zipped({path: (fixture / path).read_bytes() for path in paths})
+        report = inspect_archive(archive)
+        self.assertEqual(report["file_count"], len(paths))
+        self.assertEqual(report["syntax_error_files"], 0)
+        patch = preview_arithmetic_patch(
+            archive, "src/pricing.py", "line_total",
+            '{"replacement":"return quantity * unit_price"}', approved=True)
+        self.assertIn("quantity * unit_price", patch["diff"])
+        self.assertEqual(patch["verification"], "ast_syntax_only_no_external_tests")
+        self.assertFalse(patch["execution_allowed"])
+        self.assertEqual((fixture / "src/pricing.py").read_bytes(),
+                         b"def line_total(unit_price, quantity):\n"
+                         b"    return unit_price - quantity\n")
+
     def test_arithmetic_proposal_requires_explicit_read_consent(self):
         with self.assertRaises(RepositoryIntakeError):
             preview_arithmetic_patch(GOOD, "src/math.py", "line_total",
