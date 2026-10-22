@@ -31,6 +31,8 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+      - name: Audit production npm dependency vulnerabilities
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Generate icons
         run: npm run icons
