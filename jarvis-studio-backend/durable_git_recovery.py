@@ -32,6 +32,7 @@ def _recovery_crash_checkpoint(_phase):
 
 _TRANSACTION_ID = re.compile(r"^[A-Za-z0-9_-]{24,64}$")
 _BRANCH = re.compile(r"^jarvis/review-[0-9a-f]{16}$")
+_STAGE_TEMP = re.compile(r"^\\.jarvis-staged-[0-9a-f]{32}\\.tmp$")
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -122,11 +123,15 @@ def _journal(folder):
     checksum = data.pop("checksum", None)
     if not isinstance(checksum, str) or checksum != _sha(_serialize(data)):
         raise RecoveryBlocked("Journal digest mismatch")
+    temp_name = data.get("staging_temp")
     if (data.get("transaction_id") != directory.name
             or not _BRANCH.fullmatch(data.get("branch", ""))
             or not _SHA.fullmatch(data.get("backup_sha256", ""))
             or not _SHA.fullmatch(data.get("patched_sha256", ""))
-            or not _SHA.fullmatch(data.get("original_sha256", ""))):
+            or not _SHA.fullmatch(data.get("original_sha256", ""))
+            or (temp_name is not None and
+                (not isinstance(temp_name, str) or
+                 not _STAGE_TEMP.fullmatch(temp_name)))):
         raise RecoveryBlocked("Invalid recovery journal identity or digests")
     return data
 
@@ -244,13 +249,40 @@ def recover_entry(folder):
         staged_digest = _sha(staged_target.read_bytes())
         if staged_digest not in (journal["original_sha256"], journal["patched_sha256"]):
             raise RecoveryBlocked("Staged bytes changed by another actor")
+        # A crash midway through the atomic replacement leaves the ORIGINAL
+        # tracked source intact and at most ONE journal-named partial tempfile.
+        # Reject links, unknown extra files, or oversized unexpected contents;
+        # do not delete arbitrary worktree data supplied by another process.
+        temp_name = journal.get("staging_temp")
+        stage_temp = (staged_target.with_name(temp_name) if temp_name else None)
+        partial_exists = bool(stage_temp and (stage_temp.exists() or stage_temp.is_symlink()))
+        if partial_exists:
+            if (stage_temp.is_symlink() or not stage_temp.is_file()
+                    or stage_temp.stat().st_size > 128 * 1024):
+                raise RecoveryBlocked("Invalid journalled staging tempfile")
+            if staged_digest != journal["original_sha256"]:
+                raise RecoveryBlocked("Temporary staging file coexists with modified target")
         changed = _git(expected_worktree, "status", "--porcelain=v1",
                        "--untracked-files=all")
-        if changed and changed != "M " + target_path:
+        observed = set(changed.splitlines()) if changed else set()
+        expected = set()
+        if staged_digest == journal["patched_sha256"]:
+            expected.add(" M " + target_path)
+        if partial_exists:
+            relative_temp = (PurePosixPath(target_path).parent / temp_name).as_posix()
+            expected.add("?? " + relative_temp)
+        if observed != expected:
             raise RecoveryBlocked("Unexpected worktree status; preserve recovery")
         if (_git(expected_worktree, "rev-parse", "HEAD") != baseline["head"]
-                or _git(expected_worktree, "diff", "--name-only") not in ("", target_path)):
+                or _git(expected_worktree, "diff", "--name-only")
+                not in (("", target_path) if staged_digest == journal["original_sha256"]
+                        else (target_path,))):
             raise RecoveryBlocked("Linked worktree HEAD or diff changed")
+        # Only after validating refs, index, tracked bytes, and status may the
+        # known partial file be removed. Interruption here is resumable.
+        if partial_exists:
+            stage_temp.unlink()
+            _sync_dir(stage_temp.parent)
         _git(root, "worktree", "remove", "--force", str(expected_worktree))
         _recovery_crash_checkpoint("after_worktree_removed")
     if branch_exists:
