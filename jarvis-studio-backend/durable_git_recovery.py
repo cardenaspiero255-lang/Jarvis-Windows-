@@ -70,7 +70,9 @@ def _sync_dir(folder):
 
 
 def sync_file(path):
-    with Path(path).open("rb") as file:
+    # Windows CRT cannot FlushFileBuffers/fsync on a read-only descriptor.
+    # Open read/write without altering any bytes, then flush the backup.
+    with Path(path).open("r+b") as file:
         os.fsync(file.fileno())
     _sync_dir(Path(path).parent)
 
