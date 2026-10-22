@@ -12,6 +12,7 @@ execution action to the JARVIS language model.
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
@@ -247,7 +248,11 @@ def apply_vetted_demo_fix(snapshot, raw_proposal):
         raise SandboxError("Proposal does not pass fixed arithmetic checks")
     # Model code is not executed on the host: AST arithmetic is interpreted by
     # a narrowly constrained evaluator already regression-tested separately.
-    fixed = b"def line_total(unit_price, quantity):\n    return unit_price * quantity\n"
+    # The Docker container must test the actual, validated model proposal.
+    # Build the source exclusively from the constrained AST; do not insert
+    # unvalidated model text or silently replace it with a prewritten fix.
+    fixed = ("def line_total(unit_price, quantity):\n"
+             "    return " + ast.unparse(expr) + "\n").encode("utf-8")
     candidate.write_bytes(fixed)
     return {
         "modified_files": ["src/pricing.py"],
