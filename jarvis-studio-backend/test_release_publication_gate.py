@@ -8,6 +8,29 @@ from pathlib import Path
 
 
 class ReleasePublicationGateTests(unittest.TestCase):
+    def test_auto_publication_must_verify_trusted_authenticode_before_release(self):
+        root = Path(__file__).resolve().parent.parent
+        source = (root / ".github" / "workflows" / "release.yml").read_text("utf-8")
+        script = (root / "scripts" / "verify-release-signature.ps1").read_text("utf-8")
+        self.assertIn("verify-release-signature.ps1", source)
+        self.assertLess(source.index("verify-release-signature.ps1"),
+                        source.index("name: Publish the release"))
+        self.assertIn("Get-AuthenticodeSignature", script)
+        self.assertIn("Valid", script)
+        self.assertIn("Get-FileHash", script)
+        self.assertIn("SHA256", script)
+        self.assertIn("ExpectedThumbprint", script)
+        self.assertIn("Throw", script)
+
+    def test_release_is_read_only_unless_signed_publication_enabled(self):
+        root = Path(__file__).resolve().parent.parent
+        source = (root / ".github" / "workflows" / "release.yml").read_text("utf-8")
+        self.assertIn("vars.ENABLE_SIGNED_RELEASE", source)
+        self.assertIn("secrets.WINDOWS_SIGNING_CERT_THUMBPRINT", source)
+        self.assertIn("PUBLISH: ", source)
+        self.assertIn("physical_power_loss_certified", source.lower()
+                      if "physical_power_loss_certified" in source else "physical_power_loss_certified")
+
     def test_manual_dispatch_from_tag_cannot_publish_release(self):
         root = Path(__file__).resolve().parent.parent
         source = (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
