@@ -357,3 +357,16 @@ pub fn run() {
             }
         });
 }
+
+
+#[cfg(test)]
+mod security_token_tests {
+    #[test]
+    fn websocket_token_256bit_entropy_regression() {
+        let a = super::random_token();
+        let b = super::random_token();
+        assert_eq!(a.len(), 64, "native token must be 256-bit hex");
+        assert!(a.bytes().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(a, b, "consecutive tokens must be independent");
+    }
+}
