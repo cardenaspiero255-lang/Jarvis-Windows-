@@ -10,6 +10,18 @@ on:
       - 'scripts/real-ollama-windows.ps1'
       - 'jarvis-studio-backend/local_coding_pipeline.py'
       - 'jarvis-studio-backend/real_local_model_e2e.py'
+      - 'jarvis-studio-backend/controlled_repository_agent.py'
+      - 'jarvis-studio-backend/test_controlled_repository_agent.py'
+      - 'jarvis-studio-backend/test_controlled_repository_security.py'
+      - 'jarvis-studio-backend/test_controlled_repository_integration.py'
+      - 'jarvis-studio-backend/fixtures/controlled_repo/**'
+      - 'jarvis-studio-backend/test_real_local_model_e2e.py'
+      - 'jarvis-studio-backend/test_real_model_workflow_triggers.py'
+      - 'jarvis-studio-backend/test_local_coding_pipeline.py'
+      - 'jarvis-studio-backend/test_local_coding_integration.py'
+      - 'jarvis-studio-backend/ollama_diagnostics.py'
+      - 'jarvis-studio-backend/actions/__init__.py'
+      - 'jarvis-studio-backend/llm/live_tools.py'
   workflow_dispatch:
 
 permissions:
