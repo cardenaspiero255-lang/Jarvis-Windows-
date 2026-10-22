@@ -131,7 +131,7 @@ class DurableGitRecoveryTests(unittest.TestCase):
                 self.assertEqual(len(entries), 1)
                 journal = json.loads(entries[0].read_bytes())
                 self.assertRegex(journal["staging_temp"],
-                                 r"^\\.jarvis-staged-[0-9a-f]{32}\\.tmp$")
+                                 r"^\.jarvis-staged-[0-9a-f]{32}\.tmp$")
                 staged = entries[0].parent / "worktree" / "src" / "calc.py"
                 observed = staged.read_bytes()
                 self.assertIn(observed, (ORIGINAL, PATCHED),
