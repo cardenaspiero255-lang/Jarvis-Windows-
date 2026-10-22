@@ -124,10 +124,15 @@ async def probe():
             if event.get("event") == "repo_review_state":
                 proposal = event.get("data") or {}
                 break
-        if (not proposal or proposal.get("status") != "review_required"
-                or not proposal.get("patched_sha256")
+        if not proposal or proposal.get("status") != "review_required":
+            allowed = {"JSON_FORMAT", "AST_POLICY", "NO_MATERIAL_CHANGE",
+                       "PATCH_VALIDATION", "MODEL_UNAVAILABLE", "REQUEST_REJECTED"}
+            reason = proposal.get("reason_code") if isinstance(proposal, dict) else None
+            reason = reason if reason in allowed else "UNKNOWN_REJECTION"
+            raise RuntimeError("Real local Ollama proposal rejected at stage=" + reason)
+        if (not proposal.get("patched_sha256")
                 or "+    return " not in proposal.get("diff", "")):
-            raise RuntimeError("Real Ollama proposal was not accepted by installed review agent")
+            raise RuntimeError("Real local Ollama proposal failed diff/hash invariants")
         # A rejected or otherwise failed rollback must not be claimed as success.
         await ws.send(json.dumps({
             "type": "repo_review.request",
