@@ -60,6 +60,15 @@ class RepositoryReviewAPI:
                     result = self.sessions.apply_copy(
                         owner, data.get("session_id"),
                         data.get("expected_sha256"), approved=True)
+                elif action == "stage_git":
+                    if data.get("approved") is not True:
+                        raise ReviewDenied("Separate explicit Git branch approval required")
+                    # Local desktop chooses an existing, clean Git root; model
+                    # output cannot select a folder, branch or Git command.
+                    result = await asyncio.to_thread(
+                        self.sessions.stage_git, owner, data.get("session_id"),
+                        data.get("repo_root"), data.get("expected_sha256"),
+                        approved=True)
                 elif action == "export":
                     result = self.sessions.export(owner, data.get("session_id"))
                 elif action == "rollback":
