@@ -69,24 +69,12 @@ jobs:
       - name: Build lean NSIS with real frozen Python backend (no release)
         shell: pwsh
         run: ./scripts/build.ps1 -Lean
-      - name: Prepare verified local Ollama and authentic Qwen GGUF for packaged backend
-        shell: pwsh
-        run: ./scripts/prepare-installed-ollama.ps1
-      - name: Validate generated installer by silent installation and uninstallation
+      - name: Verify real installed JARVIS + Ollama Qwen within one process-lifetime step
         shell: pwsh
         run: |
           $path = @(Get-ChildItem "jarvis-studio-gui/src-tauri/target/release/bundle/nsis/" -Filter "*.exe" -File)
           if ($path.Count -ne 1) { throw "Expected one NSIS installer, found $($path.Count)" }
-          ./scripts/validate-installer.ps1 -InstallerPath $path[0].FullName -ReceiptPath "$env:RUNNER_TEMP/installer-smoke-proof.json"
-      - name: Stop runner-owned Ollama after installed app test
-        if: always()
-        shell: pwsh
-        run: |
-          $pidfile = Join-Path $env:RUNNER_TEMP "jarvis-installed-ollama.pid"
-          if (Test-Path -LiteralPath $pidfile) {
-            $serverPid = [int](Get-Content -LiteralPath $pidfile -Raw)
-            Stop-Process -Id $serverPid -Force -ErrorAction SilentlyContinue
-          }
+          ./scripts/prepare-installed-ollama.ps1 -InstallerPath $path[0].FullName
       - name: Preserve independent acceptance receipt
         if: always()
         uses: actions/upload-artifact@v4
