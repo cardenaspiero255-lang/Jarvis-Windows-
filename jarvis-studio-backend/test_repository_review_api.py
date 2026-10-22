@@ -67,6 +67,21 @@ class RepoReviewApiTests(unittest.IsolatedAsyncioTestCase):
                               owner="window-1", local=True, send=self.send)
         self.assertEqual(self.events[-1]["status"], "denied")
 
+    async def test_failed_approval_keeps_owned_session_discardable(self):
+        await self.api.handle({"action": "inspect", "zip_b64": zip_b64(),
+                               "consent": True}, owner="window-1",
+                              local=True, send=self.send)
+        sid = self.events[-1]["session_id"]
+        await self.api.handle({"action": "apply_copy",
+                               "session_id": sid, "approved": True,
+                               "expected_sha256": "0" * 64},
+                              owner="window-1", local=True, send=self.send)
+        self.assertEqual(self.events[-1]["status"], "denied")
+        self.assertEqual(self.events[-1]["session_id"], sid)
+        await self.api.handle({"action": "rollback", "session_id": sid},
+                              owner="window-1", local=True, send=self.send)
+        self.assertEqual(self.events[-1]["status"], "rolled_back")
+
     async def test_other_window_cannot_read_or_apply_review(self):
         await self.api.handle({"action": "inspect", "zip_b64": zip_b64(),
                                "consent": True}, owner="window-1", local=True, send=self.send)
