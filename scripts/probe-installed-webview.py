@@ -50,11 +50,31 @@ def _phase(value: str) -> None:
 from playwright.async_api import async_playwright
 
 
+async def wait_for_cdp_ready(seconds: int = 90) -> None:
+    """Do not attach before WebView2 finishes asynchronously creating CDP."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + seconds
+    while loop.time() < deadline:
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:9222/json/version",
+                                        timeout=3) as response:
+                info = json.load(response)
+            # A listening but unrelated process must not be accepted.
+            if isinstance(info, dict) and info.get("webSocketDebuggerUrl"):
+                return
+        except (OSError, ValueError, TypeError):
+            pass
+        await asyncio.sleep(2)
+    raise RuntimeError("cdp_listener_timeout")
+
+
 async def main() -> dict:
     tmp = os.environ.get("RUNNER_TEMP")
     if os.environ.get("GITHUB_ACTIONS") != "true" or not tmp:
         raise RuntimeError("Installed UI probe requires disposable Windows CI")
     target = Path(tmp).resolve() / "jarvis-installed-webview.png"
+    _phase("wait_for_cdp")
+    await wait_for_cdp_ready()
     _phase("connect_cdp")
     async with async_playwright() as p:
         browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222", timeout=12000)
