@@ -74,45 +74,94 @@ try {
     if (-not $guiAlive -or -not $backendAlive) {
         throw "Installed GUI and its child frozen backend did not start successfully"
     }
-    # Exercise real installed WebView2 via CDP before touching the model.
-    # A static React render test is not evidence of installed UI health.
-    $webviewOutput = & python scripts/probe-installed-webview.py 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "Actual installed WebView2 UI interaction FAILED: $($webviewOutput | Select-Object -Last 1)"
+    # Independently report both real installed subsystems. A broken WebView2
+    # must NEVER skip native WebSocket/Qwen/rollback verification or be marked PASS.
+    $webviewProbeFailed = $false
+    $websocketProbeFailed = $false
+    $webviewFailureCode = "none"
+    $websocketFailureCode = "none"
+    # Secret-free JSON is also preserved by the installer workflow.
+    $real_installed_ui_diagnostic = Join-Path $env:RUNNER_TEMP "jarvis-installed-ui-diagnostic.json"
+
+    try {
+        $webviewOutput = @(& python scripts/probe-installed-webview.py 2>&1)
+        $uiExitCode = $LASTEXITCODE
+        if ($uiExitCode -ne 0) {
+            throw "webview_probe_failed"
+        }
+        $webviewLine = @($webviewOutput | Where-Object {
+            $_ -is [string] -and $_.StartsWith("PLAYWRIGHT_INSTALLED_UI_PROOF=")
+        })
+        if ($webviewLine.Count -ne 1) { throw "webview_receipt_missing" }
+        $uiProof = $webviewLine[0].Substring("PLAYWRIGHT_INSTALLED_UI_PROOF=".Length) | ConvertFrom-Json
+        if ($uiProof.status -ne "real_installed_webview2_ui_verified" -or
+            $uiProof.repo_zip_dialog_opened_and_closed -ne $true -or
+            $uiProof.settings_opened_by_real_click -ne $true) {
+            throw "webview_receipt_incomplete"
+        }
+        $uiVerified = $true
+    } catch {
+        $webviewProbeFailed = $true
+        $webviewFailureCode = "webview_probe_failed"
+        if (Test-Path -LiteralPath $real_installed_ui_diagnostic -PathType Leaf) {
+            try {
+                $uiDiagnostic = Get-Content -LiteralPath $real_installed_ui_diagnostic -Raw | ConvertFrom-Json
+                if ($uiDiagnostic.success -eq $false) {
+                    $webviewFailureCode = "stage=$($uiDiagnostic.stage);exception=$($uiDiagnostic.error_type)"
+                    $cdp = $uiDiagnostic.cdp_http_diagnostics
+                    if ($cdp) {
+                        $webviewFailureCode += ";cdp_version=$($cdp.cdp_version_http);targets=$($cdp.cdp_target_count);http_failure=$($cdp.version_error_type)"
+                    }
+                }
+            } catch {
+                $webviewFailureCode = "webview_diagnostic_unreadable"
+            }
+        }
+        Write-Host "FAIL installed WebView2: $webviewFailureCode; preserved independent diagnostic."
     }
-    $webviewLine = @($webviewOutput | Where-Object {
-        $_ -is [string] -and $_.StartsWith("PLAYWRIGHT_INSTALLED_UI_PROOF=")
-    })
-    if ($webviewLine.Count -ne 1) { throw "No real installed WebView2 UI receipt" }
-    $uiProof = $webviewLine[0].Substring("PLAYWRIGHT_INSTALLED_UI_PROOF=".Length) | ConvertFrom-Json
-    if ($uiProof.status -ne "real_installed_webview2_ui_verified" -or
-        $uiProof.repo_zip_dialog_opened_and_closed -ne $true -or
-        $uiProof.settings_opened_by_real_click -ne $true) {
-        throw "Installed WebView2 UI navigation proof incomplete"
+
+    try {
+        $probeOutput = @(& python scripts/probe-installed-websocket.py 2>&1)
+        $wsExitCode = $LASTEXITCODE
+        if ($wsExitCode -ne 0) {
+            $nativeDiagnostic = @($probeOutput | Where-Object {
+                $_ -is [string] -and $_.StartsWith("JARVIS_INSTALLED_WS_FAIL=")
+            })
+            # Only expose a bounded exception TYPE, never network URL/bearer.
+            $code = "unknown"
+            if ($nativeDiagnostic.Count -gt 0 -and
+                $nativeDiagnostic[-1] -match '^JARVIS_INSTALLED_WS_FAIL=([A-Za-z_][A-Za-z0-9_]*)') {
+                $code = $Matches[1]
+            }
+            throw "websocket_probe_failed:$code"
+        }
+        $proofLine = @($probeOutput | Where-Object {
+            $_ -is [string] -and $_.StartsWith("JARVIS_INSTALLED_WS_PROOF=")
+        })
+        if ($proofLine.Count -ne 1) { throw "websocket_receipt_missing" }
+        $proof = $proofLine[0].Substring("JARVIS_INSTALLED_WS_PROOF=".Length) | ConvertFrom-Json
+        if ($proof.status -ne "real_installed_runtime_ws_verified" -or
+            $proof.negative_wrong_token_rejected -ne $true -or
+            $proof.negative_forged_gui_origin_rejected -ne $true -or
+            $proof.authenticated_real_sysinfo -ne $true -or
+            $proof.review_without_consent_denied -ne $true -or
+            $proof.ollama_gguf_execution_in_this_probe -ne $true -or
+            $proof.trusted_static_zip_model_proposal -ne $true -or
+            $proof.approved_copy_hash_matched -ne $true -or
+            $proof.reviewed_zip_export_hash_matched -ne $true -or
+            $proof.review_session_rolled_back -ne $true) {
+            throw "websocket_receipt_incomplete"
+        }
+    } catch {
+        $websocketProbeFailed = $true
+        $websocketFailureCode = "websocket_probe_failed"
+        $safeMessage = [string]$_.Exception.Message
+        if ($safeMessage -match '^websocket_(probe_failed|receipt_missing|receipt_incomplete)(:[A-Za-z_][A-Za-z0-9_]*)?$') {
+            $websocketFailureCode = $safeMessage
+        }
+        Write-Host "FAIL installed authenticated WebSocket/Qwen: $websocketFailureCode"
     }
-    $uiVerified = $true
-    $probeOutput = & python scripts/probe-installed-websocket.py 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        # Never print a bearer token; Python emits only short nonsecret errors.
-        throw "Packaged backend authenticated WebSocket E2E FAILED: $($probeOutput | Select-Object -Last 1)"
-    }
-    $proofLine = @($probeOutput | Where-Object {
-        $_ -is [string] -and $_.StartsWith("JARVIS_INSTALLED_WS_PROOF=")
-    })
-    if ($proofLine.Count -ne 1) { throw "Missing unique positive native WebSocket receipt" }
-    $proof = $proofLine[0].Substring("JARVIS_INSTALLED_WS_PROOF=".Length) | ConvertFrom-Json
-    if ($proof.status -ne "real_installed_runtime_ws_verified" -or
-        $proof.negative_wrong_token_rejected -ne $true -or
-        $proof.negative_forged_gui_origin_rejected -ne $true -or
-        $proof.authenticated_real_sysinfo -ne $true -or
-        $proof.review_without_consent_denied -ne $true -or
-        $proof.ollama_gguf_execution_in_this_probe -ne $true -or
-        $proof.trusted_static_zip_model_proposal -ne $true -or
-        $proof.approved_copy_hash_matched -ne $true -or
-        $proof.reviewed_zip_export_hash_matched -ne $true -or
-        $proof.review_session_rolled_back -ne $true) {
-        throw "Native WebSocket receipt did not satisfy authorization conditions"
-    }
+
     $guiProcess.Refresh()
     if ($guiProcess.HasExited) { throw "GUI exited after WebSocket probe" }
     if (-not (Get-Process -Id $childId -ErrorAction SilentlyContinue)) {
@@ -158,6 +207,11 @@ try {
         backend_process_terminated_with_gui = [bool]$backendGone
         native_authenticated_websocket_verified = [bool]($proof -and $proof.authenticated_real_sysinfo)
         installed_webview_ui_verified = [bool]$uiVerified
+        webview_probe_failed = [bool]$webviewProbeFailed
+        websocket_probe_failed = [bool]$websocketProbeFailed
+        webview_probe_failure_code = $webviewFailureCode
+        websocket_probe_failure_code = $websocketFailureCode
+        installed_ui_diagnostic_receipt = "jarvis-installed-ui-diagnostic.json"
         installed_webview_screenshot_available = (Test-Path -LiteralPath $uiScreenshot -PathType Leaf)
         wrong_token_rejected = [bool]($proof -and $proof.negative_wrong_token_rejected)
         forged_gui_origin_without_token_rejected = [bool]($proof -and $proof.negative_forged_gui_origin_rejected)
@@ -176,5 +230,5 @@ try {
         Set-Content -LiteralPath $ReceiptPath -Encoding utf8
     Write-Host "Installed runtime smoke receipt: $ReceiptPath"
 }
-if (-not $pass) { throw "Installed runtime end-to-end smoke FAILED" }
+if (-not $pass) { throw "Installed runtime end-to-end smoke FAILED (WebView2=$webviewFailureCode; WebSocket=$websocketFailureCode)" }
 Write-Host "PASS: real installed GUI spawned frozen backend; native WS auth and denial verified; backend exited on GUI kill."
