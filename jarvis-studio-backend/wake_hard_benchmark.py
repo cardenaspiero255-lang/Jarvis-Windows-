@@ -143,7 +143,7 @@ def validate_manifest(cases):
         path = case.get("source_path")
         digest = case.get("git_blob_sha")
         if (not isinstance(path, str)
-                or not re.fullmatch(r"audio/(jarvis|computer|alexa)/[a-z0-9.-]+\\.(wav|flac)", path)):
+                or not re.fullmatch(r"audio/(jarvis|computer|alexa)/[a-z0-9.-]+\.(wav|flac)", path)):
             errors.append("unsafe_or_unexpected_path")
         if not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{40}", digest):
             errors.append("bad_blob_hash")
