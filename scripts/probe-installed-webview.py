@@ -105,6 +105,29 @@ async def main() -> dict:
             await page.wait_for_load_state("domcontentloaded", timeout=15000)
             if not await page.get_by_role("button", name="Settings", exact=True).is_visible():
                 raise RuntimeError("Installed WebView did not render HUD Settings")
+            # A disposable fresh installation legitimately opens the first-run
+            # onboarding dialog ABOVE the normal HUD (and Review ZIP). Playwright
+            # may find Review ZIP "visible" but cannot click through that modal.
+            # Complete the REAL supported local-only setup rather than using
+            # force clicks, injecting React state, or inventing cloud API keys.
+            _phase("complete_local_onboarding")
+            onboarding = page.get_by_role("dialog", name="Welcome to JARVIS")
+            if await onboarding.count() and await onboarding.is_visible():
+                await onboarding.get_by_role(
+                    "checkbox", name="Use local Ollama (no API key)"
+                ).check(timeout=12000)
+                await onboarding.locator('input[type="text"]').fill(
+                    str(Path(tmp).resolve() / "JARVIS-E2E-LOCAL-FILES"), timeout=12000
+                )
+                await onboarding.get_by_role("button", name="Start JARVIS").click(
+                    timeout=12000
+                )
+                await onboarding.wait_for(state="hidden", timeout=30000)
+            # A real first-run download/repair overlay may still be active. It
+            # must genuinely finish instead of being hidden by the test.
+            _phase("wait_for_packaged_setup")
+            progress = page.locator(".setup-overlay")
+            await progress.wait_for(state="hidden", timeout=90000)
             # Wait for the *actual* authenticated backend socket; the ZIP
             # review control appears only after successful HUD connection.
             _phase("connect_authenticated_hud")
@@ -115,7 +138,8 @@ async def main() -> dict:
             if not await page.get_by_role("button", name="Talk", exact=True).is_visible():
                 raise RuntimeError("Installed HUD microphone control is missing")
             _phase("exercise_repository_dialog")
-            await review_button.click()
+            await review_button.click(timeout=15000)
+            _phase("verify_repository_dialog_visible")
             dialog = page.get_by_role("dialog", name="Repository review")
             await dialog.wait_for(state="visible", timeout=10000)
             if not await dialog.locator('input[type="file"][accept*=".zip"]').count():
