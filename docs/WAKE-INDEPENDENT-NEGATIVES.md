@@ -59,3 +59,21 @@ frase, pero todavía puede mostrar brevemente una UI de wake no confirmado.
 La presente campaña cuantifica el problema; no lo oculta ni declara que se ha
 reentrenado un detector. Certificación física, propietaria, consentimientos y
 licencias siguen fuera del alcance.
+
+## Mitigación de falsos despertares en la UI
+
+`wake_word_loop` conserva el umbral acústico **0.4**, y sigue usando el
+detector openWakeWord sin volver a entrenarlo. Cuando el detector proporciona
+un clip de audio asociado a un wake, JARVIS pospone `wake_triggered` hasta
+que `_command_from_clip` confirme lingüísticamente la frase de activación.
+La sola mención de «Jarvis» en una conversación no abre ya el HUD de wake
+confirmado. El modo de pulsación manual mantiene su feedback inmediato.
+
+**Coste**: la ventana visible de una activación legítima capturada aparecerá
+más tarde, cuando termine la transcripción. Esto elimina una falsa señal UI,
+no cambia la probabilidad de activación acústica del modelo ONNX ni certifica
+sus métricas. El usuario conserva el botón de activación manual.
+
+El gate `wake-acoustic-real` original permanecerá ROJO en el falso positivo
+conocido hasta que el modelo base sea mejorado y validado apropiadamente;
+no se suprimen ni se reclasifican sus fallos.

@@ -4622,6 +4622,7 @@ async def wake_word_loop(detector: WakeWordDetector) -> None:
             if hasattr(detector, "capture_commands"):
                 detector.capture_commands = capture
             woke, clip = False, None
+            defer_wake_feedback = False
 
             # ── 1. In always-on mode, skip the wake word and listen continuously.
             #    Otherwise wait for the wake word OR a manual mic trigger. ──────
@@ -4645,12 +4646,16 @@ async def wake_word_loop(detector: WakeWordDetector) -> None:
                 woke = wake_task in done
                 detection_event.clear()
                 _trigger_listen.clear()
-                # ── Pop the overlay up the INSTANT we detect — BEFORE the mic
-                #    handoff. The detector's PyAudio teardown can take a few hundred
-                #    ms, so doing it first (and on the event loop) was what made the
-                #    popup feel laggy. Emit now, then release the mic off-loop. ────
-                await emit("wake_triggered", True)
-                await emit("status", "listening")
+                # An acoustic score is not yet a confirmed command: the model
+                # also fires on speech merely mentioning Jarvis. When the wake
+                # detector preserved its own clip, defer wake UI until the
+                # transcript passes the existing "Hey Jarvis" phrase gate.
+                # Manual trigger and modes without in-stream capture retain
+                # immediate visual feedback.
+                defer_wake_feedback = bool(woke and capture)
+                if not defer_wake_feedback:
+                    await emit("wake_triggered", True)
+                    await emit("status", "listening")
                 if woke and capture:
                     if _interrupt is not None:
                         _interrupt.clear()          # Stop from here on cancels this one
@@ -4675,6 +4680,17 @@ async def wake_word_loop(detector: WakeWordDetector) -> None:
                     if text == "":                  # a false wake, or nothing said
                         await emit("status", "idle")
                         continue
+                    if defer_wake_feedback:
+                        # Only a verified phrase (possibly without a command yet)
+                        # may open the overlay. The known "Jarvis is..." hard
+                        # negative never reaches this UI path.
+                        await emit("wake_triggered", True)
+                        await emit("status", "listening")
+                elif defer_wake_feedback:
+                    # Capture timed out without a clip: expose manual mic fallback,
+                    # rather than claiming the wake phrase was verified.
+                    await emit("wake_triggered", True)
+                    await emit("status", "listening")
                 if text is None:
                     print("[Jarvis] Listening…", flush=True)
 
