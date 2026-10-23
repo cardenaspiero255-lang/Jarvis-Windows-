@@ -54,6 +54,30 @@ class InstalledRuntimeContractTests(unittest.TestCase):
         self.assertIn("visual_or_voice_physical_certified", browser)
         self.assertNotIn("virtual microphone device passed", browser)
 
+    def test_failure_of_real_webview_does_not_skip_native_backend_and_qwen(self):
+        source = (ROOT / "scripts" / "probe-installed-runtime.ps1").read_text(encoding="utf-8")
+        ui_start = source.index('probe-installed-webview.py')
+        ws_start = source.index('probe-installed-websocket.py')
+        final_gate = source.index('if (-not $pass)')
+        self.assertLess(ui_start, ws_start)
+        self.assertLess(ws_start, final_gate)
+        # A failed UI diagnosis must not throw before attempting the native WS probe.
+        self.assertNotIn('throw "Actual installed WebView2 UI interaction FAILED', source)
+        self.assertIn('webview_probe_failed', source)
+        self.assertIn('websocket_probe_failed', source)
+        self.assertIn('real_installed_ui_diagnostic.json', source)
+        self.assertIn('webview_probe_failure_code', source)
+
+    def test_installed_ui_failure_diagnostics_are_structured_and_nonsecret(self):
+        source = (ROOT / "scripts" / "probe-installed-webview.py").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/installer-validation.yml").read_text(encoding="utf-8")
+        self.assertIn("PLAYWRIGHT_INSTALLED_UI_FAIL=", source)
+        self.assertIn("cdp_http_diagnostics", source)
+        self.assertIn("jarvis-installed-ui-diagnostic.json", source)
+        self.assertIn("sys.stdout", source)
+        self.assertIn("jarvis-installed-ui-diagnostic.json", workflow)
+        self.assertIn("if: always()", workflow)
+
     def test_physical_powercut_is_not_inferred_from_runner(self):
         script = (ROOT / "scripts/probe-installed-runtime.ps1").read_text()
         self.assertIn("physical_power_loss_certified", script)
