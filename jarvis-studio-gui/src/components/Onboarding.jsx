@@ -57,7 +57,6 @@ export default function Onboarding({ sysInfo, onSave }) {
             and download a model separately; no cloud account is required.
             Existing cloud keys are never sent to Ollama.
           </span>
-          <code style={{ display: "none" }}>provider_mode</code>
         </div>
         <div className="onboard-sec">
           <label>Groq API keys {sysInfo.has_groq_key && <span className="onboard-ok">✓ set</span>}</label>
