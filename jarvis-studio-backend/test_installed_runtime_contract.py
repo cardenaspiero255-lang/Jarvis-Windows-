@@ -86,6 +86,20 @@ class InstalledRuntimeContractTests(unittest.TestCase):
         self.assertIn('jarvis-installed-ui-diagnostic.json', source)
         self.assertIn('webview_probe_failure_code', source)
 
+    def test_fresh_windows_installer_proves_real_offline_onboarding_before_local_review(self):
+        probe = (ROOT / "scripts" / "probe-installed-webview.py").read_text("utf-8")
+        setup = (ROOT / "jarvis-studio-gui" / "src" / "components" / "Onboarding.jsx").read_text("utf-8")
+        for token in ("Welcome to JARVIS", "Use local Ollama (no API key)",
+                      "Start JARVIS", "complete_local_onboarding",
+                      "repo_zip_dialog_opened_and_closed"):
+            with self.subTest(token=token):
+                self.assertIn(token, probe)
+        self.assertLess(probe.index("complete_local_onboarding"),
+                        probe.index('review_button.click('))
+        self.assertIn('cfg.provider_mode = "offline"', setup)
+        self.assertNotIn('force=True', probe)
+        self.assertNotIn('dispatch_event("click"', probe)
+
     def test_cdp_listener_readiness_is_waited_for_before_playwright_attach(self):
         source = (ROOT / "scripts" / "probe-installed-webview.py").read_text(encoding="utf-8")
         self.assertIn("wait_for_cdp_ready", source)
