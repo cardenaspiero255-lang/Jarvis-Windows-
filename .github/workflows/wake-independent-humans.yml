@@ -1,0 +1,38 @@
+name: Independent Human Wake Negatives (Windows)
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  independent-wake-holdout:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install actual ONNX wake detector and FLAC resampler
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check openwakeword==0.6.0 onnxruntime pyaudio==0.2.14 numpy scipy soundfile
+          if ($LASTEXITCODE -ne 0) { throw "Audio dependency installation failed" }
+      - name: Run frozen speaker-disjoint real human accent negatives
+        shell: pwsh
+        run: |
+          python ./jarvis-studio-backend/independent_human_wake_e2e.py
+          if ($LASTEXITCODE -ne 0) { throw "Independent real human wake negative gate FAILED" }
+      - name: Preserve independent provenance and adverse scores, never FLAC
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-independent-human-wake-negatives
+          path: ${{ runner.temp }}/jarvis-independent-human-wake-receipt.json
+          retention-days: 14
+          if-no-files-found: warn
