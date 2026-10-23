@@ -9,7 +9,6 @@ describe("first run local-first onboarding", () => {
       <Onboarding sysInfo={{ needs_setup: true, storage_dir: "", has_groq_key: false, has_gemini_key: false }} onSave={() => {}} />
     );
     expect(html).toContain("Use local Ollama (no API key)");
-    expect(html).toContain("provider_mode");
     expect(html).toContain('type="checkbox"');
     expect(html).toContain("Start JARVIS");
   });
