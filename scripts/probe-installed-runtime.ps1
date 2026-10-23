@@ -37,6 +37,12 @@ $websocketProbeFailed = $true
 $webviewFailureCode = "not_started"
 $websocketFailureCode = "not_started"
 $uiScreenshot = Join-Path $env:RUNNER_TEMP "jarvis-installed-webview.png"
+$cdpPolicyKey = "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
+$cdpPolicyName = "jarvis-studio-gui.exe"
+$cdpPolicyInstalled = $false
+$cdpPolicyCreatedKey = $false
+$cdpPolicyRestored = $true
+$cdpPolicyMode = "non_elevated_env"
 try {
     # The GUI and its frozen backend inherit the SAME ephemeral token.
     # Never put the token on the command line, into logs or into receipts.
@@ -45,6 +51,25 @@ try {
     # and is inherited by the test-created WebView2 child process.
     $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=9222 --remote-debugging-address=127.0.0.1"
     $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $env:RUNNER_TEMP ("jarvis-ci-webview2-" + [Guid]::NewGuid().ToString("N"))
+    # WebView2 Runtime 150+ ignores WEBVIEW2_* debug flags for elevated hosts.
+    # Apply the Microsoft-documented app-specific HKLM override on this
+    # disposable CI runner only. It is never added to a shipped binary.
+    $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
+    $isElevated = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if ($isElevated) {
+        $cdpPolicyMode = "temporary_hklm_exact_executable"
+        if (-not (Test-Path -LiteralPath $cdpPolicyKey)) {
+            New-Item -Path $cdpPolicyKey -Force -ErrorAction Stop | Out-Null
+            $cdpPolicyCreatedKey = $true
+        }
+        $existing = Get-ItemProperty -Path $cdpPolicyKey -Name $cdpPolicyName -ErrorAction SilentlyContinue
+        if ($null -ne $existing) { throw "Refusing to override existing WebView2 debugging policy" }
+        New-ItemProperty -Path $cdpPolicyKey -Name $cdpPolicyName -PropertyType String -Value "--remote-debugging-port=9222 --remote-debugging-address=127.0.0.1" -ErrorAction Stop | Out-Null
+        $cdpPolicyInstalled = $true
+        Write-Host "CDP test: per-executable HKLM WebView2 policy enabled on disposable runner."
+    } else {
+        Write-Host "CDP test: non-elevated WebView2 env flags."
+    }
     $guiProcess = Start-Process -FilePath $gui -WorkingDirectory $root -PassThru
     $started = $true
     $deadline = (Get-Date).AddSeconds(180)
@@ -200,8 +225,27 @@ try {
             Stop-Process -Id $childId -Force -ErrorAction SilentlyContinue
         }
     }
+    # Remove only our own registry value after the GUI/WebView2 has exited.
+    # A failed cleanup is a test failure, never silent success.
+    try {
+        if ($cdpPolicyInstalled) {
+            Remove-ItemProperty -Path $cdpPolicyKey -Name $cdpPolicyName -ErrorAction Stop
+            $cdpPolicyInstalled = $false
+        }
+        if ($cdpPolicyCreatedKey) {
+            $properties = @(Get-Item -Path $cdpPolicyKey -ErrorAction Stop).Property
+            if ($properties.Count -eq 0) {
+                Remove-Item -Path $cdpPolicyKey -ErrorAction Stop
+            }
+        }
+        $cdpPolicyRestored = $true
+    } catch {
+        $cdpPolicyRestored = $false
+        Write-Host "FAIL: WebView2 ephemeral CDP policy cleanup was not verified."
+    }
     $pass = ($started -and $guiAlive -and $backendAlive -and
-        $cleanExit -and $backendGone -and $uiVerified -and $null -ne $proof)
+        $cleanExit -and $backendGone -and $uiVerified -and $null -ne $proof -and
+        $cdpPolicyRestored)
     $receipt = [ordered]@{
         schema = "jarvis-installed-runtime-v1"
         platform = "disposable-windows-github-runner"
@@ -211,6 +255,8 @@ try {
         backend_process_terminated_with_gui = [bool]$backendGone
         native_authenticated_websocket_verified = [bool]($proof -and $proof.authenticated_real_sysinfo)
         installed_webview_ui_verified = [bool]$uiVerified
+        webview2_cdp_mode = $cdpPolicyMode
+        webview2_temporary_policy_restored = [bool]$cdpPolicyRestored
         webview_probe_failed = [bool]$webviewProbeFailed
         websocket_probe_failed = [bool]$websocketProbeFailed
         webview_probe_failure_code = $webviewFailureCode
