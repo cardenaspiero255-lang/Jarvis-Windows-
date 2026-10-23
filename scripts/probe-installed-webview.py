@@ -19,7 +19,8 @@ _PHASE = "bootstrap"
 
 def cdp_http_diagnostics() -> dict:
     """Bounded, read-only localhost CDP readiness with nonsecret metadata."""
-    status = {}
+    status = {"cdp_version_http": False, "cdp_target_count": -1,
+              "version_error_type": "none", "targets_error_type": "none"}
     for endpoint, label in (("/json/version", "version"), ("/json/list", "targets")):
         try:
             with urllib.request.urlopen("http://127.0.0.1:9222" + endpoint, timeout=3) as response:
