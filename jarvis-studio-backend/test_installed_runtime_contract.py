@@ -78,6 +78,14 @@ class InstalledRuntimeContractTests(unittest.TestCase):
         self.assertIn('real_installed_ui_diagnostic.json', source)
         self.assertIn('webview_probe_failure_code', source)
 
+    def test_cdp_listener_readiness_is_waited_for_before_playwright_attach(self):
+        source = (ROOT / "scripts" / "probe-installed-webview.py").read_text(encoding="utf-8")
+        self.assertIn("wait_for_cdp_ready", source)
+        self.assertIn("/json/version", source)
+        self.assertIn("cdp_listener_timeout", source)
+        self.assertLess(source.index("await wait_for_cdp_ready"),
+                        source.index("p.chromium.connect_over_cdp"))
+
     def test_installed_ui_failure_diagnostics_are_structured_and_nonsecret(self):
         source = (ROOT / "scripts" / "probe-installed-webview.py").read_text(encoding="utf-8")
         workflow = (ROOT / ".github/workflows/installer-validation.yml").read_text(encoding="utf-8")
