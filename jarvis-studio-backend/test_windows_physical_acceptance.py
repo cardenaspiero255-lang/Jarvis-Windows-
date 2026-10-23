@@ -83,6 +83,10 @@ class PhysicalWindowsAcceptanceTests(unittest.TestCase):
         self.assertNotIn("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", script)
         self.assertNotIn("Stop-Computer", script)
         self.assertNotIn("Set-ItemProperty", script)
+        workflow = (Path(__file__).resolve().parents[1] /
+                    ".github" / "workflows" / "installer-validation.yml").read_text("utf-8")
+        self.assertIn('"scripts/windows-physical-acceptance.ps1"', workflow)
+        self.assertNotIn("run: ./scripts/windows-physical-acceptance.ps1", workflow)
 
 
 if __name__ == "__main__":
