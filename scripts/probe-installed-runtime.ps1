@@ -32,6 +32,10 @@ $previousToken = $env:JARVIS_WS_TOKEN
 $previousWebViewFlags = $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
 $previousWebViewData = $env:WEBVIEW2_USER_DATA_FOLDER
 $uiVerified = $false
+$webviewProbeFailed = $true
+$websocketProbeFailed = $true
+$webviewFailureCode = "not_started"
+$websocketFailureCode = "not_started"
 $uiScreenshot = Join-Path $env:RUNNER_TEMP "jarvis-installed-webview.png"
 try {
     # The GUI and its frozen backend inherit the SAME ephemeral token.
