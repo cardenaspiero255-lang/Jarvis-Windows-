@@ -47,6 +47,7 @@ $backendPresent = $false
 $installerExitCode = -1
 $uninstallerExitCode = -1
 $installedRuntimeVerified = $false
+$installedRuntimeError = "not_started"
 $runtimeProofPath = Join-Path $env:RUNNER_TEMP "jarvis-installed-runtime-proof.json"
 $uninstallPath = $null
 $installedLocation = $null
