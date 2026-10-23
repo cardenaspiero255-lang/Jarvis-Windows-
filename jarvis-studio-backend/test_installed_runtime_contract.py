@@ -31,6 +31,14 @@ class InstalledRuntimeContractTests(unittest.TestCase):
         self.assertIn("$installedRuntimeVerified", script)
         self.assertIn("success = [bool]$success", script)
 
+    def test_installer_receipt_reports_native_ws_independently_of_ui(self):
+        source = (ROOT / "scripts" / "validate-installer.ps1").read_text(encoding="utf-8")
+        self.assertIn('installed_runtime_ws_acceptance = [bool]($runtimeReceipt -and', source)
+        self.assertIn('$runtimeReceipt.native_authenticated_websocket_verified', source)
+        self.assertIn('installed_runtime_qwen_acceptance = [bool]($runtimeReceipt -and', source)
+        self.assertIn('$runtimeReceipt.ollama_gguf_tested_in_installed_process', source)
+        self.assertIn('application_functional_acceptance = [bool]$installedRuntimeVerified', source)
+
     def test_packaged_gui_process_and_backend_are_separately_verified(self):
         script = (ROOT / "scripts/probe-installed-runtime.ps1").read_text()
         for value in ("jarvis-studio-gui.exe", "Get-CimInstance",
