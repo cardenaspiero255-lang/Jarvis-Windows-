@@ -225,23 +225,37 @@ try {
             Stop-Process -Id $childId -Force -ErrorAction SilentlyContinue
         }
     }
-    # Remove only our own registry value after the GUI/WebView2 has exited.
-    # A failed cleanup is a test failure, never silent success.
+    # Restore only our own temporary CDP registry value, and verify it is gone.
+    # Do not report success merely because Remove-ItemProperty returned.
+    $cdpPolicyCleanupErrorType = "none"
+    $cdpPolicyValueAbsentVerified = $false
     try {
         if ($cdpPolicyInstalled) {
             Remove-ItemProperty -Path $cdpPolicyKey -Name $cdpPolicyName -ErrorAction Stop
             $cdpPolicyInstalled = $false
         }
-        if ($cdpPolicyCreatedKey) {
-            $properties = @(Get-Item -Path $cdpPolicyKey -ErrorAction Stop).Property
-            if ($properties.Count -eq 0) {
-                Remove-Item -Path $cdpPolicyKey -ErrorAction Stop
+        if (Test-Path -LiteralPath $cdpPolicyKey) {
+            $remaining = Get-ItemProperty -Path $cdpPolicyKey -Name $cdpPolicyName -ErrorAction SilentlyContinue
+            if ($null -ne $remaining) {
+                throw "Temporary WebView2 per-executable policy was not removed"
+            }
+        }
+        $cdpPolicyValueAbsentVerified = $true
+        if ($cdpPolicyCreatedKey -and (Test-Path -LiteralPath $cdpPolicyKey)) {
+            $key = Get-Item -Path $cdpPolicyKey -ErrorAction Stop
+            if (@($key.GetValueNames()).Count -ne 0 -or $key.SubKeyCount -ne 0) {
+                throw "Temporary WebView2 policy key unexpectedly contains other policy data"
+            }
+            Remove-Item -Path $cdpPolicyKey -ErrorAction Stop
+            if (Test-Path -LiteralPath $cdpPolicyKey) {
+                throw "Temporary WebView2 policy key still exists"
             }
         }
         $cdpPolicyRestored = $true
     } catch {
         $cdpPolicyRestored = $false
-        Write-Host "FAIL: WebView2 ephemeral CDP policy cleanup was not verified."
+        $cdpPolicyCleanupErrorType = $_.Exception.GetType().Name
+        Write-Host "FAIL: WebView2 ephemeral CDP policy cleanup was not verified (type=$cdpPolicyCleanupErrorType)."
     }
     $pass = ($started -and $guiAlive -and $backendAlive -and
         $cleanExit -and $backendGone -and $uiVerified -and $null -ne $proof -and
@@ -257,6 +271,8 @@ try {
         installed_webview_ui_verified = [bool]$uiVerified
         webview2_cdp_mode = $cdpPolicyMode
         webview2_temporary_policy_restored = [bool]$cdpPolicyRestored
+        cdp_policy_cleanup_error_type = $cdpPolicyCleanupErrorType
+        cdp_policy_value_absent_verified = [bool]$cdpPolicyValueAbsentVerified
         webview_probe_failed = [bool]$webviewProbeFailed
         websocket_probe_failed = [bool]$websocketProbeFailed
         webview_probe_failure_code = $webviewFailureCode

@@ -144,6 +144,15 @@ jobs:
           path: ${{ runner.temp }}/jarvis-installed-webview.png
           if-no-files-found: warn
           retention-days: 7
+      - name: Preserve genuine installed WebView2 failure screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-installed-webview2-failure-screenshot
+          path: ${{ runner.temp }}/jarvis-installed-webview-failure.png
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Preserve unsigned lean installer for opt-in offline inspection
         if: success()
         uses: actions/upload-artifact@v4

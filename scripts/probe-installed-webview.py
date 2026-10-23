@@ -15,6 +15,7 @@ import urllib.parse
 
 # Never log a page URL, query string, bearer token, profile path, or JS state.
 _PHASE = "bootstrap"
+_CLICK_DIAGNOSTICS = {}
 
 
 def cdp_http_diagnostics() -> dict:
@@ -138,7 +139,29 @@ async def main() -> dict:
             if not await page.get_by_role("button", name="Talk", exact=True).is_visible():
                 raise RuntimeError("Installed HUD microphone control is missing")
             _phase("exercise_repository_dialog")
-            await review_button.click(timeout=15000)
+            try:
+                await review_button.click(timeout=15000)
+            except Exception:
+                # A genuine input failure must be diagnosed, never forced.
+                # Report only element classes, never page text, URL, bearer or DOM.
+                try:
+                    _CLICK_DIAGNOSTICS.update(await review_button.evaluate("""(el) => {
+                        const rect = el.getBoundingClientRect();
+                        const x = rect.left + rect.width / 2;
+                        const y = rect.top + rect.height / 2;
+                        const hit = document.elementFromPoint(x, y);
+                        const css = hit ? getComputedStyle(hit) : null;
+                        return {
+                            target_has_box: rect.width > 0 && rect.height > 0,
+                            click_target_obscured: !!hit && hit !== el && !el.contains(hit),
+                            hit_element_tag: hit?.tagName?.toLowerCase() || "none",
+                            hit_element_role: hit?.getAttribute("role") || "none",
+                            hit_element_pointer_events: css?.pointerEvents || "unknown"
+                        };
+                    }"""))
+                except Exception as diagnostic_exc:
+                    _CLICK_DIAGNOSTICS["hit_test_error_type"] = type(diagnostic_exc).__name__
+                raise
             _phase("verify_repository_dialog_visible")
             dialog = page.get_by_role("dialog", name="Repository review")
             await dialog.wait_for(state="visible", timeout=10000)
@@ -177,6 +200,21 @@ async def main() -> dict:
                 "physical_microphone_tested": False,
                 "physical_power_loss_certified": False,
             }
+        except Exception:
+            # Preserve a REAL screenshot of the failure before detaching CDP.
+            # This artifact is diagnostic; it never counts as UI acceptance.
+            if page is not None and not page.is_closed():
+                try:
+                    failed_frame = Path(tmp).resolve() / "jarvis-installed-webview-failure.png"
+                    await page.screenshot(path=str(failed_frame),
+                                          animations="disabled", timeout=5000)
+                    _CLICK_DIAGNOSTICS["screenshot_on_failure"] = (
+                        failed_frame.is_file() and failed_frame.stat().st_size > 0
+                    )
+                except Exception as screenshot_exc:
+                    _CLICK_DIAGNOSTICS["screenshot_on_failure"] = False
+                    _CLICK_DIAGNOSTICS["screenshot_error_type"] = type(screenshot_exc).__name__
+            raise
         finally:
             await browser.close()
 
@@ -193,6 +231,8 @@ if __name__ == "__main__":
             "stage": _PHASE,
             "error_type": type(exc).__name__,
             "cdp_http_diagnostics": cdp_http_diagnostics(),
+            "click_diagnostics": _CLICK_DIAGNOSTICS,
+            "screenshot_on_failure": bool(_CLICK_DIAGNOSTICS.get("screenshot_on_failure", False)),
             "screenshot_present": (Path(os.environ.get("RUNNER_TEMP", ".")) /
                                    "jarvis-installed-webview.png").is_file(),
             "physical_power_loss_certified": False,
