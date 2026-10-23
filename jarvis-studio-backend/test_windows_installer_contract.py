@@ -96,5 +96,22 @@ class WindowsInstallerAndPowercutContractTests(unittest.TestCase):
         self.assertNotIn("powercut_certified: true", workflow.lower())
 
 
+    def test_failed_real_webview_click_preserves_obstruction_evidence(self):
+        source = (ROOT / "scripts" / "probe-installed-webview.py").read_text("utf-8")
+        workflow = (ROOT / ".github" / "workflows" /
+                    "installer-validation.yml").read_text("utf-8")
+        self.assertIn("document.elementFromPoint", source)
+        self.assertIn("jarvis-installed-webview-failure.png", source)
+        self.assertIn("screenshot_on_failure", source)
+        self.assertIn("jarvis-installed-webview-failure.png", workflow)
+        self.assertIn("if: always()", workflow)
+
+    def test_temporary_webview_policy_cleanup_is_verified_not_assumed(self):
+        source = (ROOT / "scripts" / "probe-installed-runtime.ps1").read_text("utf-8")
+        self.assertIn("cdp_policy_cleanup_error_type", source)
+        self.assertIn("cdp_policy_value_absent_verified", source)
+        self.assertIn("Get-ItemProperty", source)
+
+
 if __name__ == "__main__":
     unittest.main()
