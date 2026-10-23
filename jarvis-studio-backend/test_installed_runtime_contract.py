@@ -21,6 +21,16 @@ class InstalledRuntimeContractTests(unittest.TestCase):
                         script.index("$uninstallerExitCode = Invoke-BoundedProcess"))
         self.assertNotIn("gui_launched = $false", script)
 
+    def test_uninstall_is_attempted_even_after_failed_ui_or_native_probe(self):
+        script = (ROOT / "scripts" / "validate-installer.ps1").read_text(encoding="utf-8")
+        self.assertIn("$installedRuntimeError", script)
+        self.assertIn("Runtime probe failed; continuing to verify uninstallation", script)
+        self.assertIn("Uninstall still required after runtime verification failure", script)
+        self.assertLess(script.index("Runtime probe failed; continuing to verify uninstallation"),
+                        script.index("$uninstallerExitCode = Invoke-BoundedProcess"))
+        self.assertIn("$installedRuntimeVerified", script)
+        self.assertIn("success = [bool]$success", script)
+
     def test_packaged_gui_process_and_backend_are_separately_verified(self):
         script = (ROOT / "scripts/probe-installed-runtime.ps1").read_text()
         for value in ("jarvis-studio-gui.exe", "Get-CimInstance",
