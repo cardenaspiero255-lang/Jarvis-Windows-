@@ -104,6 +104,25 @@ class InstalledRuntimeContractTests(unittest.TestCase):
         self.assertIn("jarvis-installed-ui-diagnostic.json", workflow)
         self.assertIn("if: always()", workflow)
 
+    def test_elevated_webview2_cdp_policy_is_temporary_and_app_scoped(self):
+        # Elevated hosts on WebView2 Runtime 150+ ignore env-only CDP arguments.
+        source = (ROOT / "scripts" / "probe-installed-runtime.ps1").read_text(encoding="utf-8")
+        for token in (
+            "HKLM:", "WebView2", "AdditionalBrowserArguments",
+            "jarvis-studio-gui.exe", "WindowsBuiltInRole",
+            "Administrator", "New-ItemProperty", "Remove-ItemProperty",
+            "--remote-debugging-port=9222",
+            "--remote-debugging-address=127.0.0.1",
+            "$cdpPolicyInstalled",
+        ):
+            with self.subTest(token=token):
+                self.assertIn(token, source)
+        self.assertLess(source.index("New-ItemProperty"), source.index("Start-Process -FilePath $gui"))
+        self.assertGreater(source.index("Remove-ItemProperty"), source.index("Start-Process -FilePath $gui"))
+        self.assertIn('GITHUB_ACTIONS -ne "true"', source)
+        conf = (ROOT / "jarvis-studio-gui" / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8")
+        self.assertNotIn("--remote-debugging-port", conf)
+
     def test_physical_powercut_is_not_inferred_from_runner(self):
         script = (ROOT / "scripts/probe-installed-runtime.ps1").read_text()
         self.assertIn("physical_power_loss_certified", script)
