@@ -48,6 +48,7 @@ $installerExitCode = -1
 $uninstallerExitCode = -1
 $installedRuntimeVerified = $false
 $installedRuntimeError = "not_started"
+$runtimeReceipt = $null
 $runtimeProofPath = Join-Path $env:RUNNER_TEMP "jarvis-installed-runtime-proof.json"
 $uninstallPath = $null
 $installedLocation = $null
@@ -165,8 +166,11 @@ try {
         installer_code_signature_status = (Get-AuthenticodeSignature -LiteralPath $Installer).Status.ToString()
         installation_mode = "currentUser"
         gui_launched = [bool]$installedRuntimeVerified
-        application_functional_acceptance = $false
-        installed_runtime_ws_acceptance = [bool]$installedRuntimeVerified
+        application_functional_acceptance = [bool]$installedRuntimeVerified
+        installed_runtime_ws_acceptance = [bool]($runtimeReceipt -and
+            $runtimeReceipt.native_authenticated_websocket_verified)
+        installed_runtime_qwen_acceptance = [bool]($runtimeReceipt -and
+            $runtimeReceipt.ollama_gguf_tested_in_installed_process)
         physical_power_loss_certified = $false
         success = [bool]$success
     }
