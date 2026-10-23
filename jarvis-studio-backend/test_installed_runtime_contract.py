@@ -83,7 +83,7 @@ class InstalledRuntimeContractTests(unittest.TestCase):
         self.assertNotIn('throw "Actual installed WebView2 UI interaction FAILED', source)
         self.assertIn('webview_probe_failed', source)
         self.assertIn('websocket_probe_failed', source)
-        self.assertIn('real_installed_ui_diagnostic.json', source)
+        self.assertIn('jarvis-installed-ui-diagnostic.json', source)
         self.assertIn('webview_probe_failure_code', source)
 
     def test_cdp_listener_readiness_is_waited_for_before_playwright_attach(self):
