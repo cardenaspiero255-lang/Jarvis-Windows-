@@ -110,22 +110,31 @@ try {
         Throw "Exactly one NSIS uninstall executable is required."
     }
     $uninstallPath = $uninstaller[0].FullName
-    # A valid installer is NOT sufficient without launching its bundled GUI
-    # and verifying that it spawns a real authenticated frozen backend.
-    & (Join-Path $PSScriptRoot "probe-installed-runtime.ps1") `
-        -InstallRoot $installedLocation -ReceiptPath $runtimeProofPath
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $runtimeProofPath)) {
-        throw "Real installed JARVIS runtime did not produce a receipt"
+    # A valid installer is NOT sufficient without launching its bundled GUI.
+    # Uninstall still required after runtime verification failure: we must not
+    # leave the disposable Windows runner with an incompletely tested package.
+    $installedRuntimeError = "none"
+    try {
+        & (Join-Path $PSScriptRoot "probe-installed-runtime.ps1") `
+            -InstallRoot $installedLocation -ReceiptPath $runtimeProofPath
+        if (-not (Test-Path -LiteralPath $runtimeProofPath -PathType Leaf)) {
+            throw "Missing installed runtime receipt"
+        }
+        $runtimeReceipt = Get-Content -LiteralPath $runtimeProofPath -Raw | ConvertFrom-Json
+        if ($runtimeReceipt.success -ne $true -or
+            $runtimeReceipt.installed_webview_ui_verified -ne $true -or
+            $runtimeReceipt.ollama_gguf_tested_in_installed_process -ne $true -or
+            $runtimeReceipt.child_frozen_backend_observed -ne $true -or
+            $runtimeReceipt.native_authenticated_websocket_verified -ne $true -or
+            $runtimeReceipt.wrong_token_rejected -ne $true -or
+            $runtimeReceipt.backend_process_terminated_with_gui -ne $true) {
+            throw "Installed runtime did not pass all required E2E checks"
+        }
+        $installedRuntimeVerified = $true
+    } catch {
+        $installedRuntimeError = "runtime_probe_failed"
+        Write-Host "Runtime probe failed; continuing to verify uninstallation"
     }
-    $runtimeReceipt = Get-Content -LiteralPath $runtimeProofPath -Raw | ConvertFrom-Json
-    if ($runtimeReceipt.success -ne $true -or
-        $runtimeReceipt.child_frozen_backend_observed -ne $true -or
-        $runtimeReceipt.native_authenticated_websocket_verified -ne $true -or
-        $runtimeReceipt.wrong_token_rejected -ne $true -or
-        $runtimeReceipt.backend_process_terminated_with_gui -ne $true) {
-        throw "Real installed GUI/backend WebSocket acceptance failed"
-    }
-    $installedRuntimeVerified = $true
     $uninstallerExitCode = Invoke-BoundedProcess $uninstallPath @("/S", "_?=$installedLocation") 180
     Start-Sleep -Seconds 3
     if (Test-Path -LiteralPath $gui -PathType Leaf) {
@@ -147,6 +156,7 @@ try {
         installer_exit_code = $installerExitCode
         frozen_backend_found = [bool]$backendPresent
         installed_runtime_verified = [bool]$installedRuntimeVerified
+        installed_runtime_error = $installedRuntimeError
         runtime_receipt = "jarvis-installed-runtime-proof.json"
         gui_executable_found = [bool]$runtimePresent
         uninstaller_exit_code = $uninstallerExitCode
