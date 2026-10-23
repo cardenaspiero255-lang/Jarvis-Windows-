@@ -162,6 +162,10 @@ def _record_until_silence() -> np.ndarray:
     no speech was detected within PRE_SPEECH_TIMEOUT seconds.
     Audio is processed entirely in RAM — never written to disk.
     """
+    # Clear stale per-turn events BEFORE any potentially blocking device open.
+    # A concurrent STOP while PortAudio initializes must remain visible.
+    _cancel_listen.clear()
+    _finish_listen.clear()
     pa = pyaudio.PyAudio()
     # Open the stream INSIDE a guard so a failed device-open (no mic / device
     # busy) can't leak the PyAudio instance — otherwise pa.terminate() in the
@@ -199,8 +203,6 @@ def _record_until_silence() -> np.ndarray:
     max_rms = 0.0           # loudest frame seen — for diagnosing capture vs threshold
     cancelled = False
 
-    _cancel_listen.clear()  # fresh recording — forget any earlier stop request
-    _finish_listen.clear()  # fresh recording — forget any earlier finish request
     ptt = _ptt_mode.is_set()
     try:
         for i in range(max_chunks):

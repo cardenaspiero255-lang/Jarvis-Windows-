@@ -48,7 +48,13 @@ class PiperSynthesisInterruption(unittest.IsolatedAsyncioTestCase):
     async def test_failed_synthesis_does_not_leak_temporary_wave(self):
         """A Piper ONNX failure after mkstemp must clean up the allocated file."""
         voice = mock.Mock()
-        voice.synthesize_wav.side_effect = RuntimeError("inference_aborted")
+        def abort_after_header(text, writer):
+            # Real Piper fills the WAV metadata before emitting audio.
+            writer.setnchannels(1)
+            writer.setsampwidth(2)
+            writer.setframerate(22050)
+            raise RuntimeError("inference_aborted")
+        voice.synthesize_wav.side_effect = abort_after_header
         engine = TTSEngine.__new__(TTSEngine)
         engine._ensure_piper = mock.Mock(return_value=voice)
         engine._stopped = False

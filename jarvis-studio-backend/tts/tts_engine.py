@@ -433,8 +433,17 @@ class TTSEngine:
             voice = self._ensure_piper()
             fd, path = tempfile.mkstemp(suffix=".wav")
             os.close(fd)
-            with wave.open(path, "wb") as w:
-                voice.synthesize_wav(text, w)
+            try:
+                with wave.open(path, "wb") as w:
+                    voice.synthesize_wav(text, w)
+            except BaseException:
+                # Interrupted/failed ONNX synthesis must not leak partial audio.
+                # Re-raise unchanged; never dispatch a corrupt WAV to playback.
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+                raise
             return path
 
         path = await loop.run_in_executor(None, _synth)
