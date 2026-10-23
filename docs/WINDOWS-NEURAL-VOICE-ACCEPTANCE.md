@@ -33,3 +33,26 @@ de JARVIS. No publicar los pesos ni el instalador hasta resolver licencias.
 No se certifican micrófono, altavoces, voz del propietario, identidad
 biométrica, eco, cancelación de mezcla de sonido, ni el paquete FULL offline.
 Estos requieren ensayos adicionales y, finalmente, hardware autorizado.
+
+## Primer resultado acústico observado (23 octubre 2026)
+
+En la primera ejecución real (commit `7d68a6e`) Piper produjo tres WAV
+válidos en Windows. openWakeWord ejecutó inferencia real pero **falló el gate**
+por un falso positivo comprobable:
+
+- Picos positivos: 0.997838 y 0.997663
+- Control negativo «The quick brown fox…»: 0.000125
+- Control negativo «Jarvis is a digital assistant…»: **0.545066**
+- Silencio: 0.000086; umbral productivo del modelo: **0.4**
+
+El control de mención sin saludo activa el modelo acústico, aunque
+`main._command_from_clip` dispone de una segunda verificación de
+`command_after_wake` que rechaza el texto cuando no contiene el saludo.
+Se añaden pruebas adversariales explícitas de ese contrato, pero **no se
+declara certificación acústica** ni se modifica el umbral para forzar verde
+a partir de cuatro clips sintéticos. Antes de calibrar el modelo se necesita
+un conjunto de evaluación suficientemente variado e independiente.
+
+El test `wake-acoustic-real` permanece bloqueante: su failure es evidencia,
+no una razón para omitirlo ni deshabilitarlo. El gate firmado/comercial
+permanece cerrado por las razones del informe de seguridad.
