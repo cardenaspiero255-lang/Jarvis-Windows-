@@ -26,8 +26,15 @@ class FakeWakeDetector:
         self.started += 1
         if not self.fired:
             self.fired = True
-            self.clip_callback(np.zeros(16000, dtype=np.int16), True)
             self.wake_callback()
+            # The real detector records for seconds AFTER acoustic wake.
+            # _wake_clip intentionally drains clips from abandoned turns
+            # before awaiting this turn. Delivering a fake clip before the
+            # waiter starts would be stale and cause a 25-second timeout.
+            asyncio.get_running_loop().call_later(
+                0.08,
+                lambda: self.clip_callback(np.zeros(16000, dtype=np.int16), True),
+            )
 
     def stop(self):
         self.stopped += 1
