@@ -112,6 +112,17 @@ class WindowsInstallerAndPowercutContractTests(unittest.TestCase):
         self.assertIn("cdp_policy_value_absent_verified", source)
         self.assertIn("Get-ItemProperty", source)
 
+    def test_installed_webview_waits_for_real_backend_setup_ack_before_interactions(self):
+        probe = (ROOT / "scripts" / "probe-installed-webview.py").read_text("utf-8")
+        app = (ROOT / "jarvis-studio-gui" / "src" / "App.jsx").read_text("utf-8")
+        self.assertIn('data-jarvis-backend-setup-state', app)
+        self.assertIn('wait_for_backend_setup_state', probe)
+        self.assertIn('wait_for(state="visible"', probe)
+        self.assertIn('backend_setup_acknowledged', probe)
+        self.assertLess(probe.index('backend_setup_acknowledged'),
+                        probe.index('await review_button.click'))
+        self.assertIn('state="attached"', probe)
+
 
 if __name__ == "__main__":
     unittest.main()
