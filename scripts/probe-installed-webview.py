@@ -111,9 +111,21 @@ async def main() -> dict:
             # may find Review ZIP "visible" but cannot click through that modal.
             # Complete the REAL supported local-only setup rather than using
             # force clicks, injecting React state, or inventing cloud API keys.
-            _phase("complete_local_onboarding")
+            _phase("wait_for_backend_setup_state")
+            # WebSocket connection can precede the first authenticated sysinfo.
+            # An absent onboarding dialog is NOT proof that setup is complete.
+            setup_state = page.locator("[data-jarvis-backend-setup-state]")
+            await page.wait_for_function("""() => {
+                const state = document.querySelector(
+                    "[data-jarvis-backend-setup-state]"
+                )?.getAttribute("data-jarvis-backend-setup-state");
+                return state === "required" || state === "complete";
+            }""", timeout=60000)
+            state = await setup_state.get_attribute("data-jarvis-backend-setup-state")
             onboarding = page.get_by_role("dialog", name="Welcome to JARVIS")
-            if await onboarding.count() and await onboarding.is_visible():
+            if state == "required":
+                _phase("complete_local_onboarding")
+                await onboarding.wait_for(state="visible", timeout=15000)
                 await onboarding.get_by_role(
                     "checkbox", name="Use local Ollama (no API key)"
                 ).check(timeout=12000)
@@ -123,7 +135,17 @@ async def main() -> dict:
                 await onboarding.get_by_role("button", name="Start JARVIS").click(
                     timeout=12000
                 )
-                await onboarding.wait_for(state="hidden", timeout=30000)
+            elif state != "complete":
+                raise RuntimeError("backend_setup_state_invalid")
+            # Saving config yields a fresh backend 'config'/'sysinfo' event
+            # with needs_setup=False. This is an acknowledgement, not merely
+            # a local click or a hidden modal.
+            _phase("verify_backend_setup_ack")
+            backend_setup_acknowledged = page.locator(
+                '[data-jarvis-backend-setup-state="complete"]'
+            )
+            await backend_setup_acknowledged.wait_for(state="attached", timeout=40000)
+            await onboarding.wait_for(state="hidden", timeout=20000)
             # A real first-run download/repair overlay may still be active. It
             # must genuinely finish instead of being hidden by the test.
             _phase("wait_for_packaged_setup")

@@ -1,5 +1,12 @@
 import { useState } from "react";
 
+// Never assume first-run setup is complete before authenticated backend
+// sysinfo arrives. This state reflects the real backend acknowledgement.
+export function backendSetupState(isConnected, sysInfo) {
+  if (!isConnected || typeof sysInfo?.needs_setup !== "boolean") return "pending";
+  return sysInfo.needs_setup ? "required" : "complete";
+}
+
 export function buildOnboardingConfig({ storageDir, groqKey, geminiKey, useOffline }) {
   const cfg = { storage_dir: storageDir.trim() };
   if (useOffline) {

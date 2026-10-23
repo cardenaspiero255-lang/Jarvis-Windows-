@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { JarvisHUD, DIRECTIONS } from "./hud/HudApp";
 import Settings from "./components/Settings";
-import Onboarding from "./components/Onboarding";
+import Onboarding, { backendSetupState } from "./components/Onboarding";
 import SetupProgress from "./components/SetupProgress";
 import PermissionDialog from "./components/PermissionDialog";
 import RepositoryReview from "./components/RepositoryReview";
@@ -615,6 +615,10 @@ export default function App() {
       {/* Booting: shown until the backend WebSocket connects (frozen backend start
           + first-run download). Client-side only, so it shows even if the backend
           is slow or failed to start. */}
+      {/* Nonsecret acknowledgement signal for deterministic installed UI tests.
+          "pending" is distinct from backend-confirmed setup completion. */}
+      <span hidden aria-hidden="true"
+        data-jarvis-backend-setup-state={backendSetupState(isConnected, sysInfo)} />
       <BootOverlay connected={isConnected} />
 
       {/* First-run setup: API keys + storage location (blocks until done) */}
