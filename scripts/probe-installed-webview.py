@@ -10,6 +10,41 @@ import json
 import os
 from pathlib import Path
 import sys
+import urllib.request
+import urllib.parse
+
+# Never log a page URL, query string, bearer token, profile path, or JS state.
+_PHASE = "bootstrap"
+
+
+def cdp_http_diagnostics() -> dict:
+    """Bounded, read-only localhost CDP readiness with nonsecret metadata."""
+    status = {}
+    for endpoint, label in (("/json/version", "version"), ("/json/list", "targets")):
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:9222" + endpoint, timeout=3) as response:
+                payload = json.load(response)
+            if label == "version":
+                status["cdp_version_http"] = True
+                status["browser_kind"] = "WebView2" if "WebView" in str(payload.get("Browser", "")) else "other"
+            else:
+                status["cdp_target_count"] = len(payload) if isinstance(payload, list) else -1
+                origins = set()
+                if isinstance(payload, list):
+                    for item in payload[:20]:
+                        if isinstance(item, dict):
+                            parsed = urllib.parse.urlsplit(str(item.get("url", "")))
+                            if parsed.scheme in ("http", "https", "tauri"):
+                                origins.add(parsed.scheme + "://" + parsed.netloc)
+                status["cdp_target_origins"] = sorted(origins)
+        except (OSError, ValueError, TypeError) as exc:
+            status[label + "_error_type"] = type(exc).__name__
+    return status
+
+
+def _phase(value: str) -> None:
+    global _PHASE
+    _PHASE = value
 
 from playwright.async_api import async_playwright
 
@@ -19,9 +54,11 @@ async def main() -> dict:
     if os.environ.get("GITHUB_ACTIONS") != "true" or not tmp:
         raise RuntimeError("Installed UI probe requires disposable Windows CI")
     target = Path(tmp).resolve() / "jarvis-installed-webview.png"
+    _phase("connect_cdp")
     async with async_playwright() as p:
         browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222", timeout=12000)
         try:
+            _phase("discover_packaged_window")
             page = None
             loop = asyncio.get_running_loop()
             deadline = loop.time() + 90
@@ -43,17 +80,20 @@ async def main() -> dict:
             if page is None:
                 raise RuntimeError("Real packaged WebView2 main HUD was not discoverable")
 
+            _phase("render_settings")
             await page.wait_for_load_state("domcontentloaded", timeout=15000)
             if not await page.get_by_role("button", name="Settings", exact=True).is_visible():
                 raise RuntimeError("Installed WebView did not render HUD Settings")
             # Wait for the *actual* authenticated backend socket; the ZIP
             # review control appears only after successful HUD connection.
+            _phase("connect_authenticated_hud")
             review_button = page.get_by_role("button", name="Open repository ZIP review")
             await review_button.wait_for(state="visible", timeout=40000)
             # A visible microphone control proves only UI affordance, not actual
             # capture hardware, owner voice or offline ASR.
             if not await page.get_by_role("button", name="Talk", exact=True).is_visible():
                 raise RuntimeError("Installed HUD microphone control is missing")
+            _phase("exercise_repository_dialog")
             await review_button.click()
             dialog = page.get_by_role("dialog", name="Repository review")
             await dialog.wait_for(state="visible", timeout=10000)
@@ -66,6 +106,7 @@ async def main() -> dict:
 
             # The settings pane must also open through a real user-facing
             # click. We do not enable permissions or microphone in CI.
+            _phase("open_settings_panel")
             await page.get_by_role("button", name="Settings", exact=True).click()
             settings_dialog = page.get_by_role("dialog", name="Settings")
             await settings_dialog.wait_for(state="visible", timeout=10000)
@@ -73,6 +114,7 @@ async def main() -> dict:
                 raise RuntimeError("Settings panel did not expose its close control")
             # Capture an actual WebView2-rendered frame as separate
             # inspection evidence. Never substitute a synthetic screenshot.
+            _phase("capture_real_webview")
             await page.screenshot(path=str(target), animations="disabled")
             if target.stat().st_size < 4000:
                 raise RuntimeError("Installed WebView screenshot missing/empty")
@@ -99,6 +141,25 @@ if __name__ == "__main__":
         report = asyncio.run(main())
         print("PLAYWRIGHT_INSTALLED_UI_PROOF=" + json.dumps(report, sort_keys=True))
     except Exception as exc:
-        print("PLAYWRIGHT_INSTALLED_UI_FAIL=" + type(exc).__name__
-              + ": " + str(exc)[:200], file=sys.stderr)
+        # The real failure is evidence; never bypass the UI gate.
+        # A concise stdout JSON survives pwsh's native stderr handling.
+        report = {
+            "status": "real_installed_ui_failed",
+            "stage": _PHASE,
+            "error_type": type(exc).__name__,
+            "cdp_http_diagnostics": cdp_http_diagnostics(),
+            "screenshot_present": (Path(os.environ.get("RUNNER_TEMP", ".")) /
+                                   "jarvis-installed-webview.png").is_file(),
+            "physical_power_loss_certified": False,
+            "success": False,
+        }
+        directory = os.environ.get("RUNNER_TEMP")
+        if directory:
+            try:
+                (Path(directory) / "jarvis-installed-ui-diagnostic.json").write_text(
+                    json.dumps(report, sort_keys=True), encoding="utf-8")
+            except OSError:
+                pass
+        print("PLAYWRIGHT_INSTALLED_UI_FAIL=" + json.dumps(report, sort_keys=True),
+              file=sys.stdout, flush=True)
         sys.exit(1)
