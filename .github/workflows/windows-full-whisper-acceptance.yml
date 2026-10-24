@@ -114,6 +114,44 @@ jobs:
           $result = Get-AuthenticodeSignature -LiteralPath $files[0].FullName
           if ($result.Status -eq "Valid") { Write-Host "Valid signature observed; expected owner certificate is still unverified" }
           else { Write-Host "Unsigned FULL setup cannot be publicly released" }
+      # Private PR artifact for consented physical notebook tests, not release.
+      # ONLY upload after the complete Windows FULL installed-runtime gate passes.
+      - name: Create SHA256 receipt for the exact tested FULL notebook installer
+        if: success()
+        shell: pwsh
+        run: |
+          $directory = "jarvis-studio-gui/src-tauri/target/release/bundle/nsis"
+          $files = @(Get-ChildItem -LiteralPath $directory -Filter "*.exe" -File)
+          if ($files.Count -ne 1) { throw "Expected exactly one verified FULL NSIS installer" }
+          $digest = (Get-FileHash -LiteralPath $files[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($digest -notmatch '^[0-9a-f]{64}        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-full-real-installed-receipts
+          path: |
+            ${{ runner.temp }}/jarvis-full-asset-preflight.json
+            ${{ runner.temp }}/installer-smoke-proof.json
+            ${{ runner.temp }}/jarvis-installed-runtime-proof.json
+            ${{ runner.temp }}/jarvis-installed-ui-diagnostic.json
+            ${{ runner.temp }}/jarvis-installed-webview.png
+            ${{ runner.temp }}/jarvis-python-build-dependencies.txt
+          if-no-files-found: warn
+          retention-days: 14
+) { throw "Invalid SHA256" }
+          "$digest *$($files[0].Name)" | Set-Content -LiteralPath (Join-Path $directory "jarvis-full-installer.sha256") -Encoding ascii
+          Write-Host "FULL physical-test artifact SHA256=$digest"
+
+      - name: Save unsigned FULL installer for private notebook testing, not public release
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-unsigned-full-notebook-test
+          path: |
+            jarvis-studio-gui/src-tauri/target/release/bundle/nsis/*.exe
+            jarvis-studio-gui/src-tauri/target/release/bundle/nsis/jarvis-full-installer.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
       - name: Preserve actual FULL asset and installed runtime evidence
         if: always()
         uses: actions/upload-artifact@v4
