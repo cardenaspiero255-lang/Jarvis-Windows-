@@ -18,7 +18,7 @@ class FullBundleTests(unittest.TestCase):
         (self.preload / "ms-playwright" / "chromium-999" / "chrome-win").mkdir(parents=True)
         (self.preload / "whisper-base" / "model.bin").write_bytes(b"w" * 120000)
         (self.preload / "whisper-base" / "config.json").write_text('{"model_type":"whisper"}')
-        (self.preload / "piper" / "en_GB-alan-medium.onnx").write_bytes(b"p" * 120000)
+        (self.preload / "piper" / "en_US-john-medium.onnx").write_bytes(b"p" * 120000)
         (self.preload / "piper" / "en_GB-alan-medium.onnx.json").write_text("{}")
         (self.preload / "ms-playwright" / "chromium-999" / "chrome-win" / "chrome.exe").write_bytes(b"MZ" + b"c" * 120000)
 
@@ -57,6 +57,25 @@ class FullBundleTests(unittest.TestCase):
                                         side_effect=lambda p: p.name == "model.bin"):
             self.assertIn("whisper_model_missing", audit_full_bundle(
                 self.root, engine="whisper_local")["blockers"])
+
+
+    def test_old_alan_weights_from_preload_cache_block_commercial_bundle(self):
+        stale = self.preload / "piper" / "en_GB-alan-medium.onnx"
+        stale.write_bytes(b"old" * 1000)
+        self.assertIn("unreviewed_alan_voice_present", audit_full_bundle(
+            self.root, engine="whisper_local")["blockers"])
+
+    def test_piper_defaults_use_public_domain_training_source(self):
+        root = Path(__file__).resolve().parent.parent
+        for path in (
+            "jarvis-studio-backend/tts/tts_engine.py",
+            "scripts/prefetch_preload_assets.py",
+            "jarvis-studio-backend/real_neural_voice_e2e.py",
+        ):
+            with self.subTest(path=path):
+                source = (root / path).read_text("utf-8")
+                self.assertIn('en_US-john-medium', source)
+                self.assertNotIn('en_GB-alan-medium', source)
 
     def test_build_requires_clean_whisper_mode_and_frozen_runtime_hook(self):
         root = Path(__file__).resolve().parent.parent
