@@ -21,8 +21,8 @@ def sample(**override):
 class LiteStartupGateTests(unittest.TestCase):
     def test_three_independent_real_processes_pass_with_fixed_limits(self):
         out = assess_windows_lite_samples([
-            sample(), sample(whisper_ready_ms=21000, peak_rss_mib=600),
-            sample(whisper_ready_ms=17500, peak_rss_mib=570)
+            sample(), sample(whisper_ready_ms=21000, full_worker_ms=24500, peak_rss_mib=600),
+            sample(whisper_ready_ms=17500, full_worker_ms=20500, peak_rss_mib=570)
         ])
         self.assertEqual(out["status"], "LITE_STARTUP_WIN_CI_PASS")
         self.assertEqual(out["trials"], 3)
@@ -30,6 +30,16 @@ class LiteStartupGateTests(unittest.TestCase):
         self.assertEqual(out["whisper_ready_p95_ms"], 21000)
         self.assertFalse(out["four_gib_physical_certified"])
         self.assertFalse(out["complete_gui_startup_certified"])
+
+    def test_a_model_cannot_finish_after_its_process_exited(self):
+        # A fabricated early-worker-exit observation is invalid rather than a
+        # memory or latency regression. This was the cause of CI's fixture fail.
+        out = assess_windows_lite_samples([
+            sample(), sample(whisper_ready_ms=21000, full_worker_ms=16500),
+            sample(),
+        ])
+        self.assertEqual(out["status"], "NOT_CERTIFIED")
+        self.assertIn("timing_inconsistent", out["blockers"])
 
     def test_one_slow_run_blocks_p95_instead_of_hiding_it_in_median(self):
         cases = [sample(),sample(),sample(whisper_ready_ms=STARTUP_BUDGET["whisper_ready_p95_ms"]+1,
