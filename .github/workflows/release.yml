@@ -19,6 +19,8 @@ jobs:
     runs-on: windows-latest
     env:
       PUBLISH: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.ENABLE_SIGNED_RELEASE == 'true' }}
+      # Even draft release builds use the same clean FULL offline path.
+      JARVIS_WAKE_PACKAGE_MODE: whisper_local
     steps:
       - uses: actions/checkout@v4
         with:
@@ -80,6 +82,24 @@ jobs:
       - name: Build the installer
         shell: pwsh
         run: ./scripts/build.ps1
+
+      - name: Audit staged FULL offline assets and exclude restricted wake models
+        shell: pwsh
+        run: |
+          python jarvis-studio-backend/full_offline_bundle_audit.py `
+            --bundle "jarvis-studio-gui/src-tauri/resources/jarvis-backend" `
+            --engine whisper_local `
+            --receipt "$env:RUNNER_TEMP/jarvis-full-asset-preflight.json"
+          if ($LASTEXITCODE -ne 0) { throw "FULL bundle missing assets or contains restricted wake weights" }
+
+      - name: Preserve FULL offline asset preflight receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-full-offline-asset-preflight
+          path: ${{ runner.temp }}/jarvis-full-asset-preflight.json
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Name it
         shell: pwsh
