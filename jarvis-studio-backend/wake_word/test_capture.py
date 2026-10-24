@@ -72,6 +72,36 @@ class PhraseTests(unittest.TestCase):
         self.assertIsNone(command_after_wake("Jarvis is the AI in Iron Man"))
         self.assertFalse(heard_wake_phrase("I think Jarvis was voiced by Paul Bettany"))
 
+
+    def test_transcription_near_miss_names_never_authorize_wake(self):
+        # Defect reproduction: the old (j|ch|tr) regex accepted "Hey Travis".
+        for utterance in (
+            "Hey Travis, open the calendar.",
+            "Hi Travis, what time is it?",
+            "Okay Travis, start the timer.",
+            "Kay, Traves, play music.",
+            "Hello, Chervis, open Notepad.",
+            "Hey Jarvison, open Notepad.",
+            "We were discussing Jarvis in Iron Man.",
+        ):
+            with self.subTest(utterance=utterance):
+                self.assertFalse(heard_wake_phrase(utterance))
+                self.assertIsNone(command_after_wake(utterance))
+
+    def test_plausible_wake_transcripts_continue_to_work(self):
+        examples = (
+            "Hey Jarvis, open Notepad.",
+            "Hi Jarvis, open Notepad.",
+            "Kay, Jarvis, open Notepad.",
+            "Hey Jervis, open Notepad.",
+            "Hei, Jarvis: open Notepad.",
+            "A., Jarvis. open Notepad.",
+        )
+        for transcript in examples:
+            with self.subTest(transcript=transcript):
+                self.assertTrue(heard_wake_phrase(transcript))
+                self.assertEqual(command_after_wake(transcript), "open Notepad.")
+
     def test_whispers_silence_phrases_are_noise(self):
         self.assertTrue(is_noise("Thank you."))
         self.assertTrue(is_noise("[Music]"))
