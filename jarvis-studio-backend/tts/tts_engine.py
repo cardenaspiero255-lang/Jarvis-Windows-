@@ -24,7 +24,7 @@ _ONLINE_BACKENDS = {"edge-tts", "elevenlabs", "chirp"}
 
 # Voice defaults — chosen for a refined British "JARVIS" timbre.
 _EDGE_VOICE = "en-GB-RyanNeural"             # Azure neural British male (free)
-_PIPER_VOICE = "en_GB-alan-medium"           # offline neural British male
+_PIPER_VOICE = "en_US-john-medium"           # offline neural US male; original LibriVox recordings public domain
 _ELEVEN_VOICE = "JBFqnCBsd6RMkjVDRZzb"       # ElevenLabs "George" — mature British male
 _ELEVEN_MODEL = "eleven_flash_v2_5"          # lowest-latency streaming model
 _CHIRP_VOICE = "en-GB-Chirp3-HD-Charon"      # Google Cloud TTS Chirp 3 HD British male
