@@ -41,3 +41,19 @@ Do **not** commit or ship the downloaded openWakeWord pretrained models through 
 ## Next controlled experiment
 
 Analyze per-variant misses and false activations from the receipts, compare the development trend to the independently sourced human negatives, and only then propose a specific code/model change. Add a failing regression for a reproduced error before fixing it. Do not tune to an existing holdout and then claim a new blind evaluation. Genuine adult volunteers' recordings or a separately licensed representative human dataset will still be necessary for human-positive release certification.
+
+## Evaluación adversarial detectada y comparación A/B
+
+La campaña inicial ejecutó 240 condiciones y 24 condiciones con Whisper. En
+la prueba de 24, el verificador con prompt `Jarvis` rechazó cinco de doce
+positivos sintéticos y aceptó uno de doce negativos, incluyendo el adversarial
+«Hey Travis». No es un resultado de voces humanas ni un indicador de producción.
+
+Para comprobar si el prompt inicial sesga a Whisper, el smoke ejecuta ahora
+**ambas configuraciones** sobre exactamente el mismo PCM y el mismo disparo
+acústico: `_do_transcribe(audio, "Jarvis")` (producción) y
+`_do_transcribe(audio, "")` (candidato experimental). Se reportan por separado
+el recall sintético y las falsas activaciones de ambas, sin cambiar la
+configuración de producción ni decidir con los mismos casos que una opción
+supera una evaluación independiente. Un cambio de producto futuro requerirá
+nuevos controles humanos y pruebas adversariales congeladas.
