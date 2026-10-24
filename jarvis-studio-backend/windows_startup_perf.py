@@ -23,6 +23,7 @@ from startup_perf_gate import assess_windows_lite_samples
 
 SENTINEL = "JARVIS_REAL_LITE_STARTUP="
 MODEL = "Systran/faster-whisper-base"
+CURRENT_PHASE = "created"
 
 
 async def worker_run(model_dir):
@@ -58,7 +59,12 @@ def child(args):
     if sys.platform != "win32":
         raise RuntimeError("windows_only")
     started = time.perf_counter()
-    result = asyncio.run(worker_run(args.model_dir))
+    try:
+        result = asyncio.run(worker_run(args.model_dir))
+    except Exception as exc:
+        # Never print full model paths or authentication details into public CI.
+        print("JARVIS_WORKER_FAILURE_TYPE=" + type(exc).__name__, flush=True)
+        raise
     result["whisper_ready_ms"] = round((time.perf_counter() - started) * 1000)
     print(SENTINEL + json.dumps(result, sort_keys=True), flush=True)
 
@@ -95,7 +101,11 @@ def run_worker(parent_python, local_dir, rev, checksum):
         records = [line[len(SENTINEL):] for line in output.splitlines()
                    if line.startswith(SENTINEL)]
         if proc.returncode != 0 or len(records) != 1:
-            raise RuntimeError("real_whisper_worker_failed")
+            # Retain only a safe exception CLASS from the Windows child.
+            reason = [line.partition("=")[2] for line in output.splitlines()
+                      if line.startswith("JARVIS_WORKER_FAILURE_TYPE=")]
+            error_class = reason[-1] if reason and reason[-1].isidentifier() else "unknown"
+            raise RuntimeError("real_whisper_worker_failed_" + error_class)
         result = json.loads(records[0])
         result.update({
             "environment": "github_hosted_windows",
@@ -112,26 +122,34 @@ def run_worker(parent_python, local_dir, rev, checksum):
 
 
 def measured_campaign():
+    global CURRENT_PHASE
+    CURRENT_PHASE = "windows_environment"
     if (sys.platform != "win32" or os.environ.get("GITHUB_ACTIONS") != "true"
             or os.environ.get("RUNNER_OS") != "Windows"):
         raise RuntimeError("disposable_windows_ci_only")
 
     from huggingface_hub import HfApi, snapshot_download
     api = HfApi()
+    CURRENT_PHASE = "resolve_model_commit"
     revision = api.model_info(MODEL).sha
     if not revision or len(revision) != 40:
         raise RuntimeError("model_commit_unknown")
+    CURRENT_PHASE = "download_pinned_model"
     model_dir = Path(snapshot_download(
         repo_id=MODEL, revision=revision,
         allow_patterns=["model.bin", "config.json", "tokenizer.json",
                         "vocabulary.json", "preprocessor_config.json"],
     )).resolve()
+    CURRENT_PHASE = "verify_assets"
     if not all((model_dir / name).is_file()
                for name in ("model.bin", "config.json", "tokenizer.json")):
         raise RuntimeError("offline_model_assets_incomplete")
     digest = hashlib.sha256((model_dir / "model.bin").read_bytes()).hexdigest()
-    samples = [run_worker(sys.executable, model_dir, revision, digest)
-               for _ in range(3)]
+    samples = []
+    for idx in range(3):
+        CURRENT_PHASE = "real_model_worker_" + str(idx + 1)
+        samples.append(run_worker(sys.executable, model_dir, revision, digest))
+    CURRENT_PHASE = "fixed_gate"
     verdict = assess_windows_lite_samples(samples)
     return verdict, samples
 
@@ -160,6 +178,16 @@ def main():
         report["status"] = gate["status"]
     except Exception as exc:
         report["error_type"] = type(exc).__name__
+        report["failure_phase"] = CURRENT_PHASE
+        message = str(exc)
+        # Only whitelisted internal reason identifiers; never emit arbitrary
+        # platform exceptions, paths or raw subprocess stdout into receipts.
+        if (message.startswith("real_whisper_worker_failed_")
+                or message in ("offline_model_assets_incomplete",
+                               "model_commit_unknown", "disposable_windows_ci_only")):
+            report["failure_code"] = message
+        else:
+            report["failure_code"] = "unexpected_" + type(exc).__name__
     root = os.environ.get("RUNNER_TEMP")
     if not root:
         raise RuntimeError("no_disposable_runner_temp")
@@ -171,6 +199,8 @@ def main():
         "peak_rss_mib": report.get("gate", {}).get("peak_rss_mib_observed"),
         "whisper_ready_p95_ms": report.get("gate", {}).get("whisper_ready_p95_ms"),
         "error_type": report.get("error_type", "none"),
+        "failure_phase": report.get("failure_phase", "none"),
+        "failure_code": report.get("failure_code", "none"),
         "physical_four_gib_notebook_measured": False,
     }, sort_keys=True))
     sys.exit(0 if report["status"] == "LITE_STARTUP_WIN_CI_PASS" else 1)
