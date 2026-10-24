@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 ENGINE = "whisper_local"
-VOICE = "en_GB-alan-medium"
+VOICE = "en_US-john-medium"
 
 
 def audit_full_bundle(root: Path, *, engine: str) -> dict:
@@ -59,6 +59,8 @@ def audit_full_bundle(root: Path, *, engine: str) -> dict:
             is_model = candidate.suffix.lower() in (".onnx", ".tflite", ".pb", ".h5")
             if candidate.is_symlink():
                 blockers.append("bundle_symlink_detected")
+            if candidate.name.lower().startswith("en_gb-alan-medium"):
+                blockers.append("unreviewed_alan_voice_present")
             if is_model and ("openwakeword" in parts or
                              any(part.startswith("hey_jarvis") for part in parts)):
                 forbidden.append(str(rel).replace("\\", "/"))
