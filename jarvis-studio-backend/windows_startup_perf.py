@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -42,6 +43,12 @@ async def worker_run(model_dir):
             await asyncio.to_thread(tr._get_model)
         except Exception as exc:
             whisper_error_class.append(type(exc).__name__)
+            # Public runner only. Redact local paths and control characters
+            # before exposing a short CTranslate2 diagnostic in GitHub CI.
+            diagnostic = str(exc).replace("\r", " ").replace("\n", " ")
+            diagnostic = re.sub(r"(?i)(?:[a-z]:\\\\|/)[^\\s]+", "<runtime_path>", diagnostic)
+            diagnostic = "".join(ch for ch in diagnostic if ch.isprintable())
+            print("JARVIS_WORKER_MODEL_ERROR=" + diagnostic[:220], flush=True)
             raise
 
     async def never_preload_piper():
@@ -116,6 +123,9 @@ def run_worker(parent_python, local_dir, rev, checksum):
             reason = [line.partition("=")[2] for line in output.splitlines()
                       if line.startswith("JARVIS_WORKER_FAILURE_TYPE=")]
             error_class = reason[-1] if reason and reason[-1].isidentifier() else "unknown"
+            for row in output.splitlines():
+                if row.startswith("JARVIS_WORKER_MODEL_ERROR="):
+                    print(row[:260], flush=True)
             failure_codes = [line.partition("=")[2] for line in output.splitlines()
                              if line.startswith("JARVIS_WORKER_FAILURE_CODE=")]
             safe = ("whisper_preload_unavailable_", "piper_was_preloaded",
