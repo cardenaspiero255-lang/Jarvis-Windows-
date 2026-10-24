@@ -93,7 +93,8 @@ class CommercialWakeGateTests(unittest.TestCase):
         self.spec.write_text(
             'clean_wake_bundle = os.environ.get("JARVIS_WAKE_PACKAGE_MODE") == "whisper_local"\n'
             'runtime_hooks=[str(root / "wake_word" / "frozen_engine_runtime.py")] if clean_wake_bundle else [],\n'
-            'if not clean_wake_bundle:\n    datas += collect_data_files("openwakeword")\n')
+            'if not clean_wake_bundle:\n    datas += collect_data_files("openwakeword")\n'
+            'excludes.append("openwakeword")\n')
         self.package.write_text(
             'if ($env:JARVIS_WAKE_PACKAGE_MODE -eq "whisper_local") {\n'
             '    Write-Output "No openwakeword download"\n'
