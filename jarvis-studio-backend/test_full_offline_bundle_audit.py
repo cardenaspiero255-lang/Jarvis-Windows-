@@ -38,7 +38,7 @@ class FullBundleTests(unittest.TestCase):
         self.assertIn("restricted_openwakeword_assets_present", report["blockers"])
 
     def test_missing_piper_voice_config_or_whisper_weights_fail(self):
-        (self.preload / "piper" / "en_GB-alan-medium.onnx.json").unlink()
+        (self.preload / "piper" / "en_US-john-medium.onnx.json").unlink()
         self.assertIn("piper_voice_config_missing", audit_full_bundle(
             self.root, engine="whisper_local")["blockers"])
         (self.preload / "whisper-base" / "model.bin").unlink()
