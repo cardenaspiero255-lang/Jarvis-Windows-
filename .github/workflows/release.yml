@@ -62,6 +62,21 @@ jobs:
           npm run lint
           npm test
 
+      # Technical precondition only; does not itself certify legal rights.
+      # Fail closed when non-commercial built-in hey_jarvis fallback remains,
+      # no owner review is recorded, or approved custom ONNX bytes differ.
+      - name: Verify commercial wake-model rights before public release
+        if: env.PUBLISH == 'true'
+        shell: pwsh
+        env:
+          WAKE_MODEL_COMMERCIAL_RIGHTS_REVIEWED: ${{ vars.WAKE_MODEL_COMMERCIAL_RIGHTS_REVIEWED }}
+          WAKE_MODEL_APPROVED_SHA256: ${{ secrets.WAKE_MODEL_APPROVED_SHA256 }}
+        run: |
+          python jarvis-studio-backend/commercial_wake_release_gate.py
+          if ($LASTEXITCODE -ne 0) {
+            throw "Commercial wake model not cleared: no public release"
+          }
+
       - name: Build the installer
         shell: pwsh
         run: ./scripts/build.ps1
