@@ -3,7 +3,8 @@
 param(
     [ValidateSet("smoke", "campaign")]
     [string] $Profile = "smoke",
-    [switch] $WithWhisper
+    [switch] $WithWhisper,
+    [switch] $CompareUnprompted
 )
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
@@ -110,6 +111,7 @@ try {
         "--receipt", $receipt
     )
     if ($WithWhisper) { $args += "--with-whisper" }
+    if ($CompareUnprompted) { $args += "--compare-unprompted" }
     & python @args
     if ($LASTEXITCODE -ne 0) { throw "Synthetic wake benchmark failed; receipt contains failure type" }
 } finally {
