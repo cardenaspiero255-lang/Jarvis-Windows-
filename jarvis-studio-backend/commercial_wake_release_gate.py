@@ -33,6 +33,24 @@ def check_commercial_wake_release(project_root: Path, *, rights_reviewed: str,
         if re.search(r"\b(?:return\s+|=\s*)BuiltinInference\s*\(", source):
             blockers.append("noncommercial_builtin_wake_fallback")
 
+    # Source-only approval is not enough if PyInstaller separately fetches or
+    # bundles the CC BY-NC-SA pretrained openWakeWord assets. The current
+    # production spec and packager both do this, so public release stays blocked.
+    spec = root / "jarvis-studio-backend/jarvis-backend.spec"
+    packager = root / "scripts/package-backend.ps1"
+    if spec.is_symlink() or not spec.is_file():
+        blockers.append("pyinstaller_spec_missing")
+    else:
+        spec_text = spec.read_text(encoding="utf-8")
+        if re.search(r"""collect_data_files\s*\(\s*['"]openwakeword['"]""", spec_text):
+            blockers.append("noncommercial_openwakeword_data_packaged")
+    if packager.is_symlink() or not packager.is_file():
+        blockers.append("backend_packager_missing")
+    else:
+        packager_text = packager.read_text(encoding="utf-8")
+        if re.search(r"\bdownload_models\s*\(", packager_text):
+            blockers.append("pretrained_openwakeword_weights_downloaded")
+
     # Explicit owner review is necessary but does not independently prove rights.
     if rights_reviewed != "true":
         blockers.append("commercial_rights_not_reviewed")
