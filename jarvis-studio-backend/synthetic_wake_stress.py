@@ -25,7 +25,26 @@ from wake_word.capture import heard_wake_phrase
 
 VARIANTS = ("clean", "noise_20db", "noise_10db", "distant_simulated")
 KINDS = frozenset(("synthetic_positive", "synthetic_negative"))
-EXPECTED_BASE = {"smoke": 6, "campaign": 60}
+EXPECTED_BASE = {"smoke": 6, "campaign": 60, "independent": 12}
+UNSEEN_POSITIVES = (
+    "Hey Jarvis, create a reminder for tomorrow.",
+    "Hey Jarvis, turn on the desk lamp.",
+    "Hey Jarvis, read my latest notification.",
+    "Hey Jarvis, search for a train schedule.",
+    "Hey Jarvis, explain this error message.",
+    "Hey Jarvis, list my pending downloads.",
+)
+UNSEEN_NEGATIVES = (
+    "Hey Travis, create a reminder for tomorrow.",
+    "Hey Jarvison, turn on the desk lamp.",
+    "Hay harvest, the train should arrive soon.",
+    "They mentioned Jarvis during the presentation.",
+    "Hi Travis, explain this error message.",
+    "Hey, are these files up to date?",
+)
+# Frozen before independent challenge inference. Distinct wording from
+# the previous 24/240 SAPI development campaign; NOT independent speakers.
+
 SHA_PATTERN = re.compile(r"[a-f0-9]{64}\Z")
 NAME_PATTERN = re.compile(r"sapi-[0-9]{3}\.wav\Z")
 WAKE = re.compile(r"\bhey\s+jarvis\b", re.IGNORECASE)
@@ -118,6 +137,11 @@ def validate_manifest(manifest: dict, root: Path) -> list[str]:
             _read_wav(file)
         except ValueError:
             errors.append("invalid_wav")
+    if profile == "independent":
+        frozen = UNSEEN_POSITIVES + UNSEEN_NEGATIVES
+        for i, item in enumerate(samples):
+            if isinstance(item, dict) and item.get("text") != frozen[i]:
+                errors.append("unseen_phrase_changed")
     count = EXPECTED_BASE[profile] // 2
     if labels.count("synthetic_positive") != count or labels.count("synthetic_negative") != count:
         errors.append("unbalanced_labels")
