@@ -82,6 +82,19 @@ class ConfirmBeforeWakeUI(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(("status", "listening"), events)
         self.assertIn(("status", "idle"), events)
 
+    async def test_acoustic_hey_travis_never_opens_wake_ui(self):
+        events = await self._run_clip(
+            "Hey Travis, open my calendar.", real_command=False)
+        self.assertNotIn(("wake_triggered", True), events)
+        self.assertNotIn(("status", "listening"), events)
+        self.assertIn(("status", "idle"), events)
+
+    async def test_whisper_jervis_spelling_still_opens_wake_ui(self):
+        events = await self._run_clip(
+            "Hey Jervis, open my calendar.", real_command=True)
+        self.assertIn(("wake_triggered", True), events)
+        self.assertIn(("status", "listening"), events)
+
     async def test_true_wake_still_opens_ui_and_is_processed(self):
         events = await self._run_clip(
             "Hey Jarvis, open my calendar.", real_command=True)
