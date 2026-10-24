@@ -24,6 +24,10 @@ from startup_perf_gate import assess_windows_lite_samples
 
 SENTINEL = "JARVIS_REAL_LITE_STARTUP="
 MODEL = "Systran/faster-whisper-base"
+# The converted CTranslate2 Whisper model needs its vocabulary.txt as well
+# as tokenizer.json. Omitting it produces a REAL Windows native load error.
+REQUIRED_MODEL_FILES = ("model.bin", "config.json", "tokenizer.json", "vocabulary.txt")
+MODEL_FETCH_PATTERNS = REQUIRED_MODEL_FILES + ("preprocessor_config.json",)
 CURRENT_PHASE = "created"
 
 
@@ -166,12 +170,10 @@ def measured_campaign():
     CURRENT_PHASE = "download_pinned_model"
     model_dir = Path(snapshot_download(
         repo_id=MODEL, revision=revision,
-        allow_patterns=["model.bin", "config.json", "tokenizer.json",
-                        "vocabulary.json", "preprocessor_config.json"],
+        allow_patterns=list(MODEL_FETCH_PATTERNS),
     )).resolve()
     CURRENT_PHASE = "verify_assets"
-    if not all((model_dir / name).is_file()
-               for name in ("model.bin", "config.json", "tokenizer.json")):
+    if not all((model_dir / name).is_file() for name in REQUIRED_MODEL_FILES):
         raise RuntimeError("offline_model_assets_incomplete")
     digest = hashlib.sha256((model_dir / "model.bin").read_bytes()).hexdigest()
     samples = []
