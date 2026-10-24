@@ -1,0 +1,72 @@
+"""Fail-closed commercial wake-model release precheck.
+
+This is a technical release gate, NOT legal certification. The published binary
+also needs an independent asset inventory and licensing review. Never relax
+acoustic benchmark thresholds to pass this check.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import sys
+
+
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def check_commercial_wake_release(project_root: Path, *, rights_reviewed: str,
+                                  expected_sha256: str) -> dict:
+    root = Path(project_root)
+    runtime = root / "jarvis-studio-backend/wake_word/openwakeword.py"
+    model = root / "jarvis-studio-backend/wake_word/models/hey_jarvis.onnx"
+    blockers = []
+
+    # The built-in fallback uses non-commercial pretrained weights. Even a
+    # licensed custom model must not silently fall back to these weights.
+    if runtime.is_symlink() or not runtime.is_file():
+        blockers.append("wake_runtime_missing")
+    else:
+        source = runtime.read_text(encoding="utf-8")
+        if re.search(r"\b(?:return\s+|=\s*)BuiltinInference\s*\(", source):
+            blockers.append("noncommercial_builtin_wake_fallback")
+
+    # Explicit owner review is necessary but does not independently prove rights.
+    if rights_reviewed != "true":
+        blockers.append("commercial_rights_not_reviewed")
+    if not isinstance(expected_sha256, str) or not _SHA256.fullmatch(expected_sha256):
+        blockers.append("approved_model_hash_missing")
+
+    if model.is_symlink() or not model.is_file():
+        blockers.append("approved_model_missing")
+    elif model.stat().st_size < 100_000:
+        blockers.append("approved_model_too_small")
+    elif _SHA256.fullmatch(expected_sha256 or ""):
+        with model.open("rb") as handle:
+            digest = hashlib.file_digest(handle, "sha256").hexdigest()
+        if digest != expected_sha256:
+            blockers.append("approved_model_hash_mismatch")
+
+    return {
+        "status": "NOT_CERTIFIED" if blockers else "COMMERCIAL_WAKE_TECHNICAL_PRECHECK_PASS",
+        "blockers": sorted(set(blockers)),
+        "legal_rights_certified": False,
+        "installed_model_certified": False,
+        "human_wake_performance_certified": False,
+    }
+
+
+def main() -> int:
+    report = check_commercial_wake_release(
+        Path(__file__).resolve().parent.parent,
+        rights_reviewed=os.environ.get("WAKE_MODEL_COMMERCIAL_RIGHTS_REVIEWED", ""),
+        expected_sha256=os.environ.get("WAKE_MODEL_APPROVED_SHA256", ""),
+    )
+    print("COMMERCIAL_WAKE_RELEASE_PRECHECK=" + json.dumps(report, sort_keys=True))
+    return 0 if report["status"] == "COMMERCIAL_WAKE_TECHNICAL_PRECHECK_PASS" else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
