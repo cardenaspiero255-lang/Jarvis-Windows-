@@ -124,5 +124,19 @@ class WindowsInstallerAndPowercutContractTests(unittest.TestCase):
         self.assertIn('state="attached"', probe)
 
 
+
+    def test_full_installer_can_be_downloaded_privately_with_matching_sha(self):
+        """Physical notebook tests need the exact CI-tested FULL exe, not receipts."""
+        workflow = (ROOT / ".github/workflows/windows-full-whisper-acceptance.yml").read_text("utf-8")
+        self.assertIn("jarvis-unsigned-full-notebook-test", workflow)
+        self.assertIn("if: success()", workflow)
+        self.assertIn("Get-FileHash", workflow)
+        self.assertIn("SHA256", workflow)
+        self.assertIn("jarvis-full-installer.sha256", workflow)
+        self.assertIn("jarvis-studio-gui/src-tauri/target/release/bundle/nsis/*.exe", workflow)
+        self.assertIn("retention-days: 7", workflow)
+        self.assertNotIn("action-gh-release", workflow)
+        self.assertNotIn("contents: write", workflow)
+
 if __name__ == "__main__":
     unittest.main()
