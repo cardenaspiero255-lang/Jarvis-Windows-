@@ -17,7 +17,7 @@ from synthetic_wake_stress import (
 
 def fixture(root: Path, *, profile="smoke"):
     cases = []
-    count = 6 if profile == "smoke" else 60
+    count = {"smoke": 6, "campaign": 60, "independent": 12}[profile]
     for i in range(count):
         name = f"sapi-{i:03d}.wav"
         path = root / name
@@ -92,6 +92,22 @@ class SyntheticWakeStressTests(unittest.TestCase):
         manifest = fixture(self.root, profile="campaign")
         self.assertEqual(validate_manifest(manifest, self.root), [])
         self.assertEqual(60 * len(VARIANTS), 240)
+
+
+    def test_unseen_texts_are_frozen_and_disjoint_from_previous_campaign(self):
+        from synthetic_wake_stress import (
+            UNSEEN_POSITIVES, UNSEEN_NEGATIVES, validate_manifest
+        )
+        self.assertEqual(len(UNSEEN_POSITIVES), 6)
+        self.assertEqual(len(UNSEEN_NEGATIVES), 6)
+        self.assertEqual(len(set(UNSEEN_POSITIVES + UNSEEN_NEGATIVES)), 12)
+        standard = fixture(self.root, profile="independent")
+        for i, row in enumerate(standard["samples"]):
+            row["text"] = (UNSEEN_POSITIVES + UNSEEN_NEGATIVES)[i]
+        self.assertEqual(validate_manifest(standard, self.root), [])
+        reused = copy.deepcopy(standard)
+        reused["samples"][0]["text"] = "Hey Jarvis, what time is it?"
+        self.assertIn("unseen_phrase_changed", validate_manifest(reused, self.root))
 
     def test_noise_is_deterministic_and_not_a_new_voice(self):
         pcm = np.full(16000, 900, dtype=np.int16)
