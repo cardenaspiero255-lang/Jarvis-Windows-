@@ -11,7 +11,7 @@ import numpy as np
 
 from synthetic_wake_stress import (
     VARIANTS, frozen_threshold, validate_manifest, perturb_pcm,
-    synthetic_metrics, summarize_experiment,
+    synthetic_metrics, summarize_experiment, compare_prompt_strategies,
 )
 
 
@@ -132,6 +132,24 @@ class SyntheticWakeStressTests(unittest.TestCase):
         self.assertFalse(report["human_positive_certified"])
         self.assertFalse(report["commercial_model_rights_certified"])
         self.assertEqual(report["independent_human_positive_count"], 0)
+
+    def test_optional_unprompted_comparison_cannot_claim_human_certification(self):
+        rows = [
+            {"label": "synthetic_positive", "score": 0.7, "verified": False,
+             "verified_unprompted": True, "voice_id": "voice", "variant": "clean"},
+            {"label": "synthetic_negative", "score": 0.7, "verified": True,
+             "verified_unprompted": False, "voice_id": "voice", "variant": "clean"},
+        ]
+        metrics = compare_prompt_strategies(rows)
+        self.assertEqual(metrics["production_verified_positive_recall"], 0.0)
+        self.assertEqual(metrics["experimental_unprompted_positive_recall"], 1.0)
+        self.assertEqual(metrics["production_verified_negative_false_activations"], 1)
+        self.assertEqual(metrics["experimental_unprompted_negative_false_activations"], 0)
+        self.assertEqual(metrics["human_positive_certified"], False)
+        self.assertEqual(metrics["mode"], "DIAGNOSTIC_NOT_DEPLOYED")
+        rows[0]["verified_unprompted"] = None
+        with self.assertRaises(ValueError):
+            compare_prompt_strategies(rows)
 
     def test_unknown_or_invalid_predictions_fail_closed(self):
         rows = [
