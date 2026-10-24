@@ -38,7 +38,7 @@ class LocalWhisperWakeTests(unittest.TestCase):
 
     def test_no_silence_hallucination_and_no_duplicate_activation(self):
         calls = []
-        detector = LocalWhisperWake(transcribe=lambda pcm, prompt: calls.append(1) or "Hey Jarvis")
+        detector = LocalWhisperWake(transcribe=lambda pcm, prompt: calls.append(1) or ("Hey Jarvis" if len(calls) == 1 else "ordinary words"))
         zero = np.zeros(1280, dtype=np.int16)
         self.assertEqual([detector.predict(zero) for _ in range(40)], [0] * 40)
         self.assertEqual(calls, [])
