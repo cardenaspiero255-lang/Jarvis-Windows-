@@ -23,7 +23,7 @@ import wave
 import numpy as np
 from neural_voice_contract import piper_verdict, wake_verdict
 
-VOICE = "en_GB-alan-medium"
+VOICE = "en_US-john-medium"
 
 
 def _wav_stats(path):
