@@ -57,3 +57,26 @@ jobs:
           path: ${{ runner.temp }}/jarvis-synthetic-wake-receipt.json
           if-no-files-found: warn
           retention-days: 14
+
+  
+  independent-novel-phrases:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install real wake and speech-to-text inference
+        run: python -m pip install --disable-pip-version-check openwakeword==0.6.0 onnxruntime pyaudio==0.2.14 numpy faster-whisper
+      - name: Evaluate frozen 48 unseen synthetic acoustic conditions with both Whisper prompts
+        shell: pwsh
+        run: ./scripts/windows-synthetic-wake-stress.ps1 -Profile independent -WithWhisper -CompareUnprompted
+      - name: Preserve novel-phrase metrics only, no PCM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-synthetic-wake-novel-48-metrics
+          path: ${{ runner.temp }}/jarvis-synthetic-wake-receipt.json
+          if-no-files-found: warn
+          retention-days: 14
