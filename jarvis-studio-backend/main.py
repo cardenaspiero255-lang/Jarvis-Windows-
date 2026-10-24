@@ -9,6 +9,8 @@ import re
 import sys
 import time
 
+from startup_resources import plan_for_current_windows, warm_voice_models
+
 # LLM responses contain Unicode the Windows console can't encode by default
 # (em-dashes, non-breaking hyphens "‑", emoji), which makes print() raise
 # UnicodeEncodeError under the default cp1252 codec and aborts the pipeline.
@@ -4956,13 +4958,17 @@ async def main(use_text: bool) -> None:
     finally:
         _setup_in_progress = False
 
-    # Warm the local Whisper model + Piper voice in the BACKGROUND (load the ONNX
-    # models into RAM; the DOWNLOADS are already done by provisioning above). Not
-    # awaited, so the app is responsive immediately and the wake-word loop starts at
-    # once: Whisper is the offline STT fallback (~40s cold load) and Piper is the
-    # daily-driver voice (~7s load) whose load would otherwise stall the first reply.
-    _track_task(preload_whisper(), "whisper preload")
-    _track_task(_tts.preload(), "tts preload")
+    # Use actual Win32 physical and available RAM to avoid loading Whisper
+    # and Piper ONNX sessions concurrently. Under 5 GiB or low free memory,
+    # prioritize STT for confirmed "Hey Jarvis", and defer TTS to first use.
+    # Neither model is disabled: deferred loaders remain available on demand.
+    # This background coroutine preserves HUD responsiveness on startup.
+    startup_plan = plan_for_current_windows(use_text=use_text)
+    print(f"[Startup] voice preloading: {startup_plan.mode} "
+          f"({startup_plan.reason}); whisper={startup_plan.whisper}, "
+          f"tts={startup_plan.tts}", flush=True)
+    _track_task(warm_voice_models(startup_plan, preload_whisper, _tts.preload),
+                "sequential voice preload")
 
     try:
         if use_text:
