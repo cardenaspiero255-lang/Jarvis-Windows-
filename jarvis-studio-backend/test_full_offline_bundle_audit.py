@@ -30,6 +30,13 @@ class FullBundleTests(unittest.TestCase):
         self.assertFalse(receipt["license_rights_certified"])
         self.assertEqual(len(receipt["hashes"]), 4)
 
+    def test_public_release_requires_upstream_pinned_whisper_and_john_weights(self):
+        report = audit_full_bundle(
+            self.root, engine="whisper_local", enforce_model_pins=True)
+        self.assertIn("whisper_model_hash_mismatch", report["blockers"])
+        self.assertIn("piper_voice_hash_mismatch", report["blockers"])
+        self.assertEqual(report["hashes"], {})
+
     def test_restricted_oww_pretrained_model_blocks_even_with_full_whisper(self):
         p = self.root / "_internal" / "openwakeword" / "resources" / "models"
         p.mkdir(parents=True)
