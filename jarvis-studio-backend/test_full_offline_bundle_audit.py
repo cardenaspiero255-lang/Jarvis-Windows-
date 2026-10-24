@@ -77,6 +77,14 @@ class FullBundleTests(unittest.TestCase):
                 self.assertIn('en_US-john-medium', source)
                 self.assertNotIn('en_GB-alan-medium', source)
 
+
+    def test_preload_cache_copy_must_allowlist_assets_not_wildcard_all_files(self):
+        root = Path(__file__).resolve().parent.parent
+        ps1 = (root / "scripts" / "package-backend.ps1").read_text("utf-8")
+        self.assertNotIn('Copy-Item -Path (Join-Path $Cache "*")', ps1)
+        self.assertIn('("ms-playwright", "whisper-base", "piper")', ps1)
+        self.assertIn('LinkType', ps1)
+
     def test_build_requires_clean_whisper_mode_and_frozen_runtime_hook(self):
         root = Path(__file__).resolve().parent.parent
         spec = (root / "jarvis-studio-backend" / "jarvis-backend.spec").read_text("utf-8")
