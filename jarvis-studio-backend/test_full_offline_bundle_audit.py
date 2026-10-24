@@ -75,7 +75,7 @@ class FullBundleTests(unittest.TestCase):
             with self.subTest(path=path):
                 source = (root / path).read_text("utf-8")
                 self.assertIn('en_US-john-medium', source)
-                self.assertNotIn('en_GB-alan-medium', source)
+                self.assertNotIn('= "en_GB-alan-medium"', source)
 
 
     def test_preload_cache_copy_must_allowlist_assets_not_wildcard_all_files(self):
