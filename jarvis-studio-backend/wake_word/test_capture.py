@@ -95,7 +95,7 @@ class PhraseTests(unittest.TestCase):
             "Kay, Jarvis, open Notepad.",
             "Hey Jervis, open Notepad.",
             "Hei, Jarvis: open Notepad.",
-            "A., Jarvis. open Notepad.",
+            "A. Jarvis. open Notepad.",
         )
         for transcript in examples:
             with self.subTest(transcript=transcript):
