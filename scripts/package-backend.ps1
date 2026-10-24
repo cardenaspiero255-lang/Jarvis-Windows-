@@ -68,11 +68,16 @@ try {
     $oldCrt = Join-Path $Venv "Lib\site-packages\winrt\msvcp140.dll"
     if (Test-Path $oldCrt) { Remove-Item -Force $oldCrt }
 
-    # Pre-fetch openWakeWord's ONNX feature models so PyInstaller can bundle them.
-    # Without this the frozen app's wake word silently never fires.
-    Write-Host "Fetching wake-word models..." -ForegroundColor DarkGray
-    & $python -c "import openwakeword.utils as u; u.download_models()"
-    if ($LASTEXITCODE -ne 0) { throw "Failed to download openWakeWord models (exit $LASTEXITCODE)." }
+    # The FULL clean-licence backend uses locally bundled Whisper base. Do
+    # not download or ship CC BY-NC-SA openWakeWord pretrained assets in it.
+    if ($env:JARVIS_WAKE_PACKAGE_MODE -eq "whisper_local") {
+        if ($Lean) { throw "Whisper-local wake needs the FULL offline model; Lean prohibited." }
+        Write-Host "Whisper-only FULL package: pre-trained OWW weights excluded" -ForegroundColor DarkGray
+    } else {
+        Write-Host "Development-only OWW wake models (NONCOMMERCIAL)..." -ForegroundColor DarkGray
+        & $python -c "import openwakeword.utils as u; u.download_models()"
+        if ($LASTEXITCODE -ne 0) { throw "Failed to download development OWW models (exit $LASTEXITCODE)." }
+    }
 
     Write-Host "Running PyInstaller..." -ForegroundColor DarkGray
     & $pyi jarvis-backend.spec --noconfirm --clean
