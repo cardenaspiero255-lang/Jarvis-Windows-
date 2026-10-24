@@ -11,6 +11,10 @@
 # under dist/jarvis-backend/preload-assets/. OCR libraries stay excluded.
 
 from pathlib import Path
+import os
+
+# Clean FULL experimental bundle excludes NC openWakeWord weights entirely.
+clean_wake_bundle = os.environ.get('JARVIS_WAKE_PACKAGE_MODE') == 'whisper_local'
 
 from PyInstaller.utils.hooks import (
     collect_submodules,
@@ -122,6 +126,10 @@ hiddenimports = [
     "pynvml",
 ]
 
+if clean_wake_bundle:
+    hiddenimports = [name for name in hiddenimports
+                     if not (name == "openwakeword" or name.startswith("openwakeword."))]
+
 # ── Data files & native libs the above packages load at runtime ─────────────
 datas = []
 binaries = []
@@ -130,7 +138,8 @@ binaries = []
 # package data — without these the wake word silently never fires. (Pre-fetch with
 # `python -m openwakeword.utils.download_models` before building; package-backend
 # does this automatically.)
-datas += collect_data_files("openwakeword")
+if not clean_wake_bundle:
+    datas += collect_data_files("openwakeword")
 
 # Piper needs its bundled assets (espeak-ng phoneme data, etc.). Playwright ships
 # its node-based driver as package data — without it the frozen browser can't
@@ -187,6 +196,9 @@ excludes = [
 # imports its training module (custom_verifier_model), which needs both just to
 # `import openwakeword`. Excluding them would break wake-word detection.
 
+if clean_wake_bundle:
+    excludes.append("openwakeword")
+
 a = Analysis(
     [str(root / "main.py")],
     pathex=[str(root)],
@@ -195,7 +207,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=[str(root / "wake_word" / "frozen_engine_runtime.py")] if clean_wake_bundle else [],
     excludes=excludes,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
