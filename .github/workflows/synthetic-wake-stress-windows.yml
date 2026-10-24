@@ -26,7 +26,7 @@ jobs:
         run: python -m pip install --disable-pip-version-check openwakeword==0.6.0 onnxruntime pyaudio==0.2.14 numpy faster-whisper
       - name: Real Windows SAPI 24-condition diagnostic incl second-stage Whisper
         shell: pwsh
-        run: ./scripts/windows-synthetic-wake-stress.ps1 -Profile smoke -WithWhisper
+        run: ./scripts/windows-synthetic-wake-stress.ps1 -Profile smoke -WithWhisper -CompareUnprompted
       - name: Preserve metrics only, never synthesized PCM
         if: always()
         uses: actions/upload-artifact@v4
