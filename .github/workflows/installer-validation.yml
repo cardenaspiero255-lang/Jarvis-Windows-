@@ -1,0 +1,164 @@
+# PR-only NSIS install/uninstall smoke: NEVER publish from this workflow.
+# GitHub-hosted runner is disposable and currentUser install needs no admin.
+name: Windows NSIS Installer Acceptance
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/installer-validation.yml'
+      - 'scripts/build.ps1'
+      - 'scripts/package-backend.ps1'
+      - 'scripts/validate-installer.ps1'
+      - 'scripts/probe-installed-runtime.ps1'
+      - 'scripts/probe-installed-websocket.py'
+      - 'scripts/prepare-installed-ollama.ps1'
+      - 'jarvis-studio-gui/**'
+      - 'jarvis-studio-backend/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jarvis-installer-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install-uninstall:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: windows-latest
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: jarvis-studio-gui/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Parse PowerShell lab and installed-runtime scripts before packaging
+        shell: pwsh
+        run: |
+          $paths = @(
+            "scripts/validate-installer.ps1",
+            "scripts/probe-installed-runtime.ps1",
+            "scripts/prepare-installed-ollama.ps1",
+            "scripts/verify-release-signature.ps1",
+            "scripts/hyperv-powercut-acceptance.ps1",
+            "scripts/windows-physical-acceptance.ps1"
+          )
+          foreach ($path in $paths) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path), [ref]$tokens, [ref]$errors)
+            if ($errors.Count -ne 0) { throw "PowerShell parse errors in $($path): $($errors -join '; ')" }
+          }
+      - name: Installer + power cut contract regression tests
+        shell: pwsh
+        working-directory: jarvis-studio-backend
+        run: python -m unittest -v test_windows_installer_contract
+      - name: Install pinned native WebSocket test client
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check websockets==12.0 playwright==1.56.0
+          if ($LASTEXITCODE -ne 0) { throw "Unable to install bounded native WS probe" }
+      - name: Build lean NSIS with real frozen Python backend (no release)
+        shell: pwsh
+        run: ./scripts/build.ps1 -Lean
+      - name: Prove unsigned setup is blocked from PUBLIC GitHub Release
+        shell: pwsh
+        run: |
+          $setups = @(Get-ChildItem "jarvis-studio-gui/src-tauri/target/release/bundle/nsis/" -Filter "*.exe" -File)
+          if ($setups.Count -ne 1) { throw "Expected one setup for signing gate" }
+          $receipt = Join-Path $env:RUNNER_TEMP "jarvis-release-signature-proof.json"
+          try {
+            ./scripts/verify-release-signature.ps1 -InstallerPath $setups[0].FullName `
+              -ExpectedThumbprint ("0" * 40) -ReceiptPath $receipt
+          } catch {
+            Write-Host "Expected denial by Authenticode signing gate on unsigned setup."
+          }
+          if (-not (Test-Path -LiteralPath $receipt)) { throw "Missing signing gate denial evidence" }
+          $report = Get-Content -LiteralPath $receipt -Raw | ConvertFrom-Json
+          if ($report.success -ne $false -or $report.status -ne 'blocked' -or
+              $report.signature_status -eq 'Valid') {
+            throw "An unsigned or untrusted setup bypassed the public release gate"
+          }
+          Write-Host "PASS: unsigned NSIS public-release publication denied by real Authenticode API."
+      - name: Verify real installed JARVIS + Ollama Qwen within one process-lifetime step
+        shell: pwsh
+        run: |
+          $path = @(Get-ChildItem "jarvis-studio-gui/src-tauri/target/release/bundle/nsis/" -Filter "*.exe" -File)
+          if ($path.Count -ne 1) { throw "Expected one NSIS installer, found $($path.Count)" }
+          ./scripts/prepare-installed-ollama.ps1 -InstallerPath $path[0].FullName
+      - name: Preserve unsigned signature gate denial evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-unsigned-publication-denied
+          path: ${{ runner.temp }}/jarvis-release-signature-proof.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Preserve actual frozen Python package version inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-python-release-build-dependencies
+          path: ${{ runner.temp }}/jarvis-python-build-dependencies.txt
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Preserve independent acceptance receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-installer-acceptance-receipt
+          path: ${{ runner.temp }}/installer-smoke-proof.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Preserve installed GUI / frozen backend / auth proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-real-installed-runtime-proof
+          path: ${{ runner.temp }}/jarvis-installed-runtime-proof.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Preserve real WebView2 CDP failure diagnosis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-installed-ui-diagnostic
+          path: ${{ runner.temp }}/jarvis-installed-ui-diagnostic.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Preserve installed WebView2 GUI screenshot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-real-installed-webview2-screenshot
+          path: ${{ runner.temp }}/jarvis-installed-webview.png
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Preserve genuine installed WebView2 failure screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-installed-webview2-failure-screenshot
+          path: ${{ runner.temp }}/jarvis-installed-webview-failure.png
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Preserve unsigned lean installer for opt-in offline inspection
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-unsigned-lean-installer
+          path: jarvis-studio-gui/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 7

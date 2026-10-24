@@ -1,0 +1,60 @@
+# VM readiness is capability discovery ONLY. No foreign source is run or installed.
+# Do not treat a readable /dev/kvm as evidence that a guest has booted safely.
+name: MicroVM Readiness and External ZIP Preview
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/vm-readiness.yml'
+      - 'jarvis-studio-backend/vm_execution_gate.py'
+      - 'jarvis-studio-backend/external_repo_preview.py'
+      - 'jarvis-studio-backend/test_vm_execution_gate.py'
+      - 'jarvis-studio-backend/test_external_repo_preview.py'
+      - 'jarvis-studio-backend/repository_review_sessions.py'
+      - 'jarvis-studio-backend/repository_review_api.py'
+      - 'jarvis-studio-backend/test_repository_review_sessions.py'
+      - 'jarvis-studio-backend/test_repository_review_api.py'
+      - 'jarvis-studio-backend/test_repository_review_security_matrix.py'
+      - 'jarvis-studio-backend/authorized_git_transaction.py'
+      - 'jarvis-studio-backend/test_authorized_git_transaction.py'
+      - 'jarvis-studio-backend/durable_git_recovery.py'
+      - 'jarvis-studio-backend/test_durable_git_recovery.py'
+      - 'jarvis-studio-backend/test_repository_review_git_integration.py'
+      - 'jarvis-studio-backend/controlled_repository_agent.py'
+      - 'jarvis-studio-backend/local_coding_pipeline.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vm-readiness-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  safety-preview:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: jarvis-studio-backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run archive and VM security contract tests
+        run: python -m unittest -v test_vm_execution_gate test_external_repo_preview test_repository_review_sessions test_repository_review_api test_repository_review_security_matrix test_authorized_git_transaction test_repository_review_git_integration test_durable_git_recovery
+      - name: Record KVM availability without launching untrusted workloads
+        run: python vm_execution_gate.py --ci-probe
+      - name: Preserve deny-by-default capability receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-vm-readiness-not-certified
+          path: ${{ runner.temp }}/jarvis-vm-capability.json
+          retention-days: 7
+          if-no-files-found: error

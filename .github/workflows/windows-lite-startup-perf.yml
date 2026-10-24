@@ -1,0 +1,49 @@
+name: Windows Lite Startup Memory & Latency Gate
+
+on:
+  pull_request:
+    branches: [main, master]
+    paths:
+      - '.github/workflows/windows-lite-startup-perf.yml'
+      - 'jarvis-studio-backend/startup_resources.py'
+      - 'jarvis-studio-backend/startup_perf_gate.py'
+      - 'jarvis-studio-backend/windows_startup_perf.py'
+      - 'jarvis-studio-backend/transcription/whisper_transcriber.py'
+      - 'jarvis-studio-backend/test_startup_perf_gate.py'
+      - 'jarvis-studio-backend/test_startup_resources.py'
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  real-lite-windows:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install real CPU Whisper runtime and telemetry sampler
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check faster-whisper==1.2.1 pyaudio==0.2.14 psutil==7.1.0 huggingface-hub==0.35.3
+          if ($LASTEXITCODE -ne 0) { throw "Real benchmark dependencies unavailable" }
+      - name: Measure three fresh Windows model startups with fixed fail-closed budgets
+        shell: pwsh
+        run: |
+          python ./jarvis-studio-backend/windows_startup_perf.py
+          if ($LASTEXITCODE -ne 0) { throw "JARVIS lite startup regression gate FAILED" }
+      - name: Preserve real peak RSS, latency and asset provenance even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-windows-lite-startup-measurements
+          path: ${{ runner.temp }}/jarvis-windows-lite-startup-perf.json
+          if-no-files-found: warn
+          retention-days: 14
