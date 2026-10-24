@@ -60,3 +60,13 @@ graphify-out/
 .DS_Store
 Thumbs.db
 *.log
+
+
+# Private, opt-in human wake word recordings and local consent records
+# Human voices, hashes, pseudonymous speaker IDs and holdout allocations
+# must never enter the public repository or CI artifacts.
+**/human-wake-private/
+**/private-wake/
+**/pending-human-wake/
+**/manifest.private.json
+**/.intake.lock
