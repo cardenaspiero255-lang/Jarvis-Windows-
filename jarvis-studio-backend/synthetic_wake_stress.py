@@ -209,7 +209,39 @@ def summarize_experiment(rows: list[dict], *, verifier_used: bool) -> dict:
     }
 
 
-def run(manifest_path: Path, *, receipt: Path, with_whisper: bool) -> int:
+def compare_prompt_strategies(rows: list[dict]) -> dict:
+    """Compare fixed production 'Jarvis' prompt against an unprompted experiment.
+
+    Development diagnostics only; neither branch is a new blind human holdout.
+    The unprompted strategy must not be deployed or selected on the same data.
+    """
+    production = synthetic_metrics(rows, verifier_used=True)
+    alternate = []
+    for row in rows:
+        verdict = row.get("verified_unprompted")
+        if type(verdict) is not bool:
+            raise ValueError("unprompted_verifier_missing")
+        alternate.append({**row, "verified": verdict})
+    alternative = synthetic_metrics(alternate, verifier_used=True)
+    return {
+        "mode": "DIAGNOSTIC_NOT_DEPLOYED",
+        "production_verified_positive_recall": production["synthetic_positive_verified_recall"],
+        "production_verified_negative_false_activations":
+            production["synthetic_negative_verified_false_activations"],
+        "experimental_unprompted_positive_recall":
+            alternative["synthetic_positive_verified_recall"],
+        "experimental_unprompted_negative_false_activations":
+            alternative["synthetic_negative_verified_false_activations"],
+        "positive_cases": production["synthetic_positive_cases"],
+        "negative_cases": production["synthetic_negative_cases"],
+        "human_positive_certified": False,
+        "release_certified": False,
+        "production_wake_verifier_unchanged": True,
+    }
+
+
+def run(manifest_path: Path, *, receipt: Path, with_whisper: bool,
+        compare_unprompted: bool = False) -> int:
     # This experimental runner is for disposable Windows CI or explicitly
     # authorized local experimentation; it never records the microphone.
     report = {
@@ -217,6 +249,8 @@ def run(manifest_path: Path, *, receipt: Path, with_whisper: bool) -> int:
         "independent_human_positive_count": 0, "human_positive_certified": False,
     }
     try:
+        if compare_unprompted and not with_whisper:
+            raise ValueError('unprompted comparison requires real Whisper')
         manifest_path = manifest_path.resolve(strict=True)
         folder = manifest_path.parent
         manifest = json.loads(manifest_path.read_text("utf-8"))
@@ -242,13 +276,20 @@ def run(manifest_path: Path, *, receipt: Path, with_whisper: bool) -> int:
                 if with_whisper:
                     verified = bool(heard_wake_phrase(
                         _do_transcribe(audio, "Jarvis"))) if fired else False
+                unprompted = None
+                if compare_unprompted:
+                    unprompted = bool(heard_wake_phrase(
+                        _do_transcribe(audio, ""))) if fired else False
                 rows.append({
                     "file": item["file"], "voice_id": item["voice_id"],
                     "label": item["label"], "variant": variant,
                     "score": score, "verified": verified,
+                    "verified_unprompted": unprompted,
                     "inference_ms": elapsed,
                 })
         report.update(summarize_experiment(rows, verifier_used=with_whisper))
+        if compare_unprompted:
+            report['experimental_unprompted_comparison'] = compare_prompt_strategies(rows)
         report.update({
             "profile": manifest["profile"],
             "generated_source_wav_count": len(manifest["samples"]),
@@ -275,6 +316,7 @@ def run(manifest_path: Path, *, receipt: Path, with_whisper: bool) -> int:
         "source_voices": report.get("synthetic_source_voice_count", 0),
         "failure_type": report.get("failure_type", "none"),
         "synthetic_metrics": report.get("metrics"),
+        "experimental_unprompted_comparison": report.get("experimental_unprompted_comparison"),
         "human_positive_certified": False,
     }, sort_keys=True))
     return 0 if report["status"] == "SYNTHETIC_ONLY_MEASURED" else 1
@@ -285,6 +327,7 @@ def main() -> int:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--with-whisper", action="store_true")
+    parser.add_argument("--compare-unprompted", action="store_true")
     args = parser.parse_args()
     if (os.environ.get("GITHUB_ACTIONS") != "true"
             or os.environ.get("RUNNER_OS") != "Windows"):
@@ -294,7 +337,8 @@ def main() -> int:
     receipt = args.receipt.resolve()
     if manifest.parent != scratch or receipt.parent != scratch:
         raise SystemExit("manifest and receipt must be under RUNNER_TEMP")
-    return run(manifest, receipt=receipt, with_whisper=args.with_whisper)
+    return run(manifest, receipt=receipt, with_whisper=args.with_whisper,
+               compare_unprompted=args.compare_unprompted)
 
 
 if __name__ == "__main__":
