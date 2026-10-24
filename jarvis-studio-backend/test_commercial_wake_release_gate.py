@@ -82,6 +82,34 @@ class CommercialWakeGateTests(unittest.TestCase):
         self.assertIn("backend_packager_missing", check_commercial_wake_release(
             self.root, rights_reviewed="true", expected_sha256=self.sha)["blockers"])
 
+
+    def test_clean_whisper_source_route_requires_exact_packaged_runtime_and_owner_review(self):
+        from commercial_wake_release_gate import check_commercial_wake_release
+        hook = self.root / "jarvis-studio-backend/wake_word/frozen_engine_runtime.py"
+        hook.write_text('os.environ["JARVIS_WAKE_ENGINE"] = "whisper_local"')
+        self.source.write_text(
+            'if engine == "whisper_local": return LocalWhisperWake()\n'
+            'return BuiltinInference("dev only")\n')
+        self.spec.write_text(
+            'clean_wake_bundle = os.environ.get("JARVIS_WAKE_PACKAGE_MODE") == "whisper_local"\n'
+            'runtime_hooks=[str(root / "wake_word" / "frozen_engine_runtime.py")] if clean_wake_bundle else [],\n'
+            'if not clean_wake_bundle:\n    datas += collect_data_files("openwakeword")\n')
+        self.package.write_text(
+            'if ($env:JARVIS_WAKE_PACKAGE_MODE -eq "whisper_local") {\n'
+            '    Write-Output "No openwakeword download"\n'
+            '} else { download_models() }\n')
+        self.assertEqual(check_commercial_wake_release(
+            self.root, rights_reviewed="true", expected_sha256="",
+            package_engine="whisper_local")["status"],
+            "COMMERCIAL_WAKE_TECHNICAL_PRECHECK_PASS")
+        self.assertIn("commercial_rights_not_reviewed", check_commercial_wake_release(
+            self.root, rights_reviewed="false", expected_sha256="",
+            package_engine="whisper_local")["blockers"])
+        hook.unlink()
+        self.assertIn("frozen_whisper_hook_missing", check_commercial_wake_release(
+            self.root, rights_reviewed="true", expected_sha256="",
+            package_engine="whisper_local")["blockers"])
+
     def test_release_workflow_must_check_before_publication(self):
         root = Path(__file__).resolve().parent.parent
         flow = (root / ".github/workflows/release.yml").read_text("utf-8")
