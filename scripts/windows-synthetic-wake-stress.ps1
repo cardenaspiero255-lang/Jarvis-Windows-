@@ -1,7 +1,7 @@
 # Windows SAPI generates synthetic WAVs ONLY on ephemeral GitHub Windows runners.
 # Does not access microphones, record humans, upload speech, or train models.
 param(
-    [ValidateSet("smoke", "campaign")]
+    [ValidateSet("smoke", "campaign", "independent")]
     [string] $Profile = "smoke",
     [switch] $WithWhisper,
     [switch] $CompareUnprompted
@@ -52,6 +52,22 @@ $negative = @(
     "Let's practice speaking English sentences.",
     "Can you lower the sound on the speakers?"
 )
+$unseenPositive = @(
+    "Hey Jarvis, create a reminder for tomorrow.",
+    "Hey Jarvis, turn on the desk lamp.",
+    "Hey Jarvis, read my latest notification.",
+    "Hey Jarvis, search for a train schedule.",
+    "Hey Jarvis, explain this error message.",
+    "Hey Jarvis, list my pending downloads."
+)
+$unseenNegative = @(
+    "Hey Travis, create a reminder for tomorrow.",
+    "Hey Jarvison, turn on the desk lamp.",
+    "Hay harvest, the train should arrive soon.",
+    "They mentioned Jarvis during the presentation.",
+    "Hi Travis, explain this error message.",
+    "Hey, are these files up to date?"
+)
 $manifestPath = Join-Path $env:RUNNER_TEMP "jarvis-synthetic-manifest.json"
 $receipt = Join-Path $env:RUNNER_TEMP "jarvis-synthetic-wake-receipt.json"
 $records = [System.Collections.Generic.List[object]]::new()
@@ -60,11 +76,13 @@ try {
     if ($voices.Count -lt 1) {
         throw "No installed Windows SAPI voice available. Cannot invent synthetic sources."
     }
-    $limit = if ($Profile -eq "smoke") { 3 } else { 15 }
-    $rates = if ($Profile -eq "smoke") { @(0) } else { @(0, 2) }
+    $limit = if ($Profile -eq "smoke") { 3 } elseif ($Profile -eq "independent") { 6 } else { 15 }
+    $rates = if ($Profile -eq "campaign") { @(0, 2) } else { @(0) }
     $num = 0
     foreach ($label in @("synthetic_positive", "synthetic_negative")) {
-        $phrases = if ($label -eq "synthetic_positive") { $positive } else { $negative }
+        $phrases = if ($Profile -eq "independent") {
+            if ($label -eq "synthetic_positive") { $unseenPositive } else { $unseenNegative }
+        } elseif ($label -eq "synthetic_positive") { $positive } else { $negative }
         for ($i = 0; $i -lt $limit; $i++) {
             foreach ($rate in $rates) {
                 $installed = $voices[$num % $voices.Count].VoiceInfo
