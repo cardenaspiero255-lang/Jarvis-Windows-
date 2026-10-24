@@ -36,17 +36,23 @@ async def worker_run(model_dir):
         raise RuntimeError("lite_policy_is_not_effective")
     from transcription import whisper_transcriber as tr
 
+    whisper_error_class = []
     async def load_whisper():
-        await asyncio.to_thread(tr._get_model)
+        try:
+            await asyncio.to_thread(tr._get_model)
+        except Exception as exc:
+            whisper_error_class.append(type(exc).__name__)
+            raise
 
     async def never_preload_piper():
         raise RuntimeError("unexpected_piper_preload")
 
     statuses = await warm_voice_models(plan, load_whisper, never_preload_piper)
-    if (statuses != {"whisper": "ready", "tts": "deferred"}
-            or tr._model is None
-            or "tts.tts_engine" in sys.modules):
-        raise RuntimeError("actual_whisper_not_loaded_or_piper_preloaded")
+    if statuses["whisper"] != "ready" or tr._model is None:
+        kind = whisper_error_class[-1] if whisper_error_class else "no_model"
+        raise RuntimeError("whisper_preload_unavailable_" + kind)
+    if statuses["tts"] != "deferred" or "tts.tts_engine" in sys.modules:
+        raise RuntimeError("piper_was_preloaded")
     # The whisper model is loaded from a pre-fetched local directory, never
     # re-downloaded during worker timing.
     if tr._bundled_model_path() != str(Path(model_dir).resolve()):
@@ -64,6 +70,11 @@ def child(args):
     except Exception as exc:
         # Never print full model paths or authentication details into public CI.
         print("JARVIS_WORKER_FAILURE_TYPE=" + type(exc).__name__, flush=True)
+        code = str(exc)
+        safe = ("whisper_preload_unavailable_", "piper_was_preloaded",
+                "wrong_model_path", "lite_policy_is_not_effective")
+        if type(exc) is RuntimeError and code.startswith(safe) and len(code) < 100:
+            print("JARVIS_WORKER_FAILURE_CODE=" + code, flush=True)
         raise
     result["whisper_ready_ms"] = round((time.perf_counter() - started) * 1000)
     print(SENTINEL + json.dumps(result, sort_keys=True), flush=True)
@@ -105,7 +116,15 @@ def run_worker(parent_python, local_dir, rev, checksum):
             reason = [line.partition("=")[2] for line in output.splitlines()
                       if line.startswith("JARVIS_WORKER_FAILURE_TYPE=")]
             error_class = reason[-1] if reason and reason[-1].isidentifier() else "unknown"
-            raise RuntimeError("real_whisper_worker_failed_" + error_class)
+            failure_codes = [line.partition("=")[2] for line in output.splitlines()
+                             if line.startswith("JARVIS_WORKER_FAILURE_CODE=")]
+            safe = ("whisper_preload_unavailable_", "piper_was_preloaded",
+                    "wrong_model_path", "lite_policy_is_not_effective")
+            detail = failure_codes[-1] if (failure_codes
+                     and failure_codes[-1].startswith(safe)
+                     and len(failure_codes[-1]) < 100) else "unspecified"
+            raise RuntimeError("real_whisper_worker_failed_" + error_class
+                               + "_" + detail)
         result = json.loads(records[0])
         result.update({
             "environment": "github_hosted_windows",
