@@ -80,6 +80,9 @@ NOISE_MARGIN = 1.5
 SILENCE_CEILING = 2500
 
 _model: "WhisperModel | None" = None
+# Model warm-up can race a real wake. A shared lock prevents two heavyweight
+# CTranslate2 sessions from loading concurrently on a small Windows notebook.
+_model_lock = threading.Lock()
 
 
 def _bundled_model_path() -> "str | None":
@@ -147,12 +150,17 @@ def _frame_is_speech(rms: float, threshold: float, noise_floor: float,
 
 def _get_model() -> WhisperModel:
     global _model
-    if _model is None:
-        model_ref = _bundled_model_path() or "base"
-        print(f"[Whisper] Loading model from {model_ref}...", flush=True)
-        _model = WhisperModel(model_ref, device="cpu", compute_type="int8")
-        print("[Whisper] Model ready.", flush=True)
-    return _model
+    if _model is not None:
+        return _model
+    with _model_lock:
+        # A second caller may have waited while the first successfully loaded
+        # the session. Publish the model only after construction succeeds.
+        if _model is None:
+            model_ref = _bundled_model_path() or "base"
+            print(f"[Whisper] Loading model from {model_ref}...", flush=True)
+            _model = WhisperModel(model_ref, device="cpu", compute_type="int8")
+            print("[Whisper] Model ready.", flush=True)
+        return _model
 
 
 def _record_until_silence() -> np.ndarray:
