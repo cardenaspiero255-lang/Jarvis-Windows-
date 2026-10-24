@@ -5,7 +5,7 @@ Python, BEFORE staging the frozen backend. It downloads, once, on the dev box:
 
   • Chromium               → preload-assets/ms-playwright/   (~170MB)
   • faster-whisper base    → preload-assets/whisper-base/    (~150MB)
-  • Piper en_GB-alan voice → preload-assets/piper/           (~60MB)
+  • Piper en_US-john voice → preload-assets/piper/           (~60MB)
 
 so the shipped installer carries them and a fresh install works OFFLINE, with no
 first-run download. The backend reads exactly these locations at runtime (see
@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 
 _WHISPER_REPO = "Systran/faster-whisper-base"
-_PIPER_VOICE = "en_GB-alan-medium"
+_PIPER_VOICE = "en_US-john-medium"
 
 
 def _ok(msg: str) -> None:
@@ -90,6 +90,13 @@ def _fetch_whisper(target: Path) -> None:
 def _fetch_piper(target: Path) -> None:
     """Download the default Piper voice into target/piper."""
     dest = target / "piper"
+    # Never carry forward the former en_GB-alan-medium model from a reused
+    # .preload-cache into a clean FULL bundle. Its source training set lists
+    # All Rights Reserved; deleting cached bytes is safe for the build cache.
+    if os.environ.get("JARVIS_WAKE_PACKAGE_MODE") == "whisper_local":
+        for stale in dest.glob("en_GB-alan-medium.onnx*"):
+            if stale.is_symlink() or stale.is_file():
+                stale.unlink()
     model = dest / f"{_PIPER_VOICE}.onnx"
     if model.is_file():
         _ok(f"Piper voice already staged at {dest}")
