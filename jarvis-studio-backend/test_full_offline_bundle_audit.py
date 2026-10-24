@@ -19,7 +19,7 @@ class FullBundleTests(unittest.TestCase):
         (self.preload / "whisper-base" / "model.bin").write_bytes(b"w" * 120000)
         (self.preload / "whisper-base" / "config.json").write_text('{"model_type":"whisper"}')
         (self.preload / "piper" / "en_US-john-medium.onnx").write_bytes(b"p" * 120000)
-        (self.preload / "piper" / "en_GB-alan-medium.onnx.json").write_text("{}")
+        (self.preload / "piper" / "en_US-john-medium.onnx.json").write_text("{}")
         (self.preload / "ms-playwright" / "chromium-999" / "chrome-win" / "chrome.exe").write_bytes(b"MZ" + b"c" * 120000)
 
     def test_valid_full_bundle_has_required_assets_but_not_certification(self):
