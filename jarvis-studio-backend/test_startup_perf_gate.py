@@ -61,6 +61,13 @@ class LiteStartupGateTests(unittest.TestCase):
             sample(),sample(),sample(model_sha256="c"*64)
         ])["status"], "NOT_CERTIFIED")
 
+    def test_real_faster_whisper_model_has_all_required_vocab_assets(self):
+        # Regression: a config+model.bin+tokenizer-only snapshot passed the
+        # superficial asset check but CTranslate2 could not load its vocabulary.
+        from windows_startup_perf import REQUIRED_MODEL_FILES, MODEL_FETCH_PATTERNS
+        self.assertIn("vocabulary.txt", REQUIRED_MODEL_FILES)
+        self.assertTrue(set(REQUIRED_MODEL_FILES).issubset(set(MODEL_FETCH_PATTERNS)))
+
     def test_reject_unauthorised_budget_overrides(self):
         with self.assertRaises(TypeError):
             assess_windows_lite_samples([sample()]*3, memory_budget_mib=5000)
