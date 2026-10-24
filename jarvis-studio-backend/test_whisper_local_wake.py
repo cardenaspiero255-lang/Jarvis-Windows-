@@ -13,7 +13,7 @@ class LocalWhisperWakeTests(unittest.TestCase):
     def _drive(self, detector, length):
         scores = []
         for _ in range(length // 1280):
-            scores.append(detector.predict(np.full(1280, 2500, dtype=np.int16)))
+            scores.append(detector.predict(np.tile(np.array([2500, -2500], dtype=np.int16), 640)))
         return scores
 
     def test_exact_hey_jarvis_activates_without_prompted_stt(self):
@@ -56,7 +56,7 @@ class LocalWhisperWakeTests(unittest.TestCase):
         detector = LocalWhisperWake(transcribe=lambda pcm, prompt: "Hey Jarvis")
         self._drive(detector, WINDOW_SAMPLES - 1280)
         detector.reset()
-        self.assertEqual(detector.predict(np.full(1280, 2000, dtype=np.int16)), 0.0)
+        self.assertEqual(detector.predict(np.tile(np.array([2000, -2000], dtype=np.int16), 640)), 0.0)
 
     def test_bad_pcm_and_transcriber_failure_deny_trigger(self):
         detector = LocalWhisperWake(transcribe=lambda pcm, prompt: "Hey Jarvis")
