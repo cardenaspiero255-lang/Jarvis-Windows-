@@ -126,11 +126,11 @@ class CommandCapture:
 
 
 # "Hey Jarvis" as Whisper writes it: a greeting, then the name ("Kay"/"A." for "Hey"
-# and Jervis/Travis-style spellings were seen live). A bare "Jarvis" doesn't count —
-# that's how conversation about Jarvis sounds.
+# and Jervis-style spellings were seen live). Near-miss names such as "Travis"
+# must never authorize wake; a bare "Jarvis" does not count either.
 _WAKE_PHRASE = re.compile(
     r"(?:\b(?:hey|hi|hay|hei|ay|eh|kay|ok(?:ay)?|hello|yo)\b[\s,.!-]*|\ba[.,!]\s*)"
-    r"(?:j|ch|tr)[ae]r?v[aeiu]s\b", re.IGNORECASE)
+    r"j[ae]r?v[aeiu]s\b", re.IGNORECASE)
 
 # Whisper's stock output for near-silence: never a command.
 _NOISE = {
