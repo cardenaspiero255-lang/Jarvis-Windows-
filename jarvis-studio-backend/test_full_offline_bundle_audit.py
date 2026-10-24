@@ -1,6 +1,7 @@
 """RED: FULL offline clean-licence bundle must be audited before NSIS release."""
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from full_offline_bundle_audit import audit_full_bundle
 
@@ -52,7 +53,7 @@ class FullBundleTests(unittest.TestCase):
             self.root, engine="whisper_local")["blockers"])
 
     def test_no_symlink_in_required_assets(self):
-        with unittest.mock.patch.object(Path, "is_symlink", autospec=True,
+        with patch.object(Path, "is_symlink", autospec=True,
                                         side_effect=lambda p: p.name == "model.bin"):
             self.assertIn("whisper_model_missing", audit_full_bundle(
                 self.root, engine="whisper_local")["blockers"])
