@@ -3,6 +3,7 @@ import hashlib
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from commercial_wake_release_gate import check_commercial_wake_release
 
@@ -48,12 +49,11 @@ class CommercialWakeGateTests(unittest.TestCase):
         self.source.unlink()
         self.assertIn("wake_runtime_missing", check_commercial_wake_release(
             self.root, rights_reviewed="true", expected_sha256=self.sha)["blockers"])
-        other = self.root / "outside.onnx"
-        other.write_bytes(self.model.read_bytes())
-        self.model.unlink()
-        self.model.symlink_to(other)
-        self.assertIn("approved_model_missing", check_commercial_wake_release(
-            self.root, rights_reviewed="true", expected_sha256=self.sha)["blockers"])
+        self.source.write_text("def _build_recognizer():\n    return CustomInference('model')\n")
+        # Simulate a symlink without needing elevated Windows privileges.
+        with patch.object(Path, "is_symlink", autospec=True, side_effect=lambda path: path == self.model):
+            self.assertIn("approved_model_missing", check_commercial_wake_release(
+                self.root, rights_reviewed="true", expected_sha256=self.sha)["blockers"])
 
     def test_release_workflow_must_check_before_publication(self):
         root = Path(__file__).resolve().parent.parent
