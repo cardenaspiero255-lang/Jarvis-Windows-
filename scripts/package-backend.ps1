@@ -113,7 +113,21 @@ try {
         Write-Host "Copying bundled assets into dist..." -ForegroundColor DarkGray
         if (Test-Path $Preload) { Remove-Item -Recurse -Force $Preload }
         New-Item -ItemType Directory -Force -Path $Preload | Out-Null
-        Copy-Item -Path (Join-Path $Cache "*") -Destination $Preload -Recurse -Force
+        # An old cache may contain unrelated executables, secret files, or
+        # unreviewed model weights. Only copy these three known asset roots.
+        foreach ($assetName in @("ms-playwright", "whisper-base", "piper")) {
+            $source = Join-Path $Cache $assetName
+            if (-not (Test-Path -LiteralPath $source -PathType Container)) {
+                throw "FULL preload asset missing: $assetName"
+            }
+            $entries = @(Get-Item -LiteralPath $source -Force) + @(
+                Get-ChildItem -LiteralPath $source -Force -Recurse
+            )
+            if (@($entries | Where-Object { $_.LinkType }).Count -gt 0) {
+                throw "Symlink/junction in FULL preload cache: $assetName"
+            }
+            Copy-Item -LiteralPath $source -Destination (Join-Path $Preload $assetName) -Recurse -Force
+        }
         $pMb = [math]::Round((Get-ChildItem $Preload -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB, 1)
         Write-Host "Bundled assets staged at $Preload ($pMb MB)" -ForegroundColor DarkGray
     }
