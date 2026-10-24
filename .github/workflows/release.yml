@@ -1,0 +1,209 @@
+# Push a tag vX.Y.Z (matching jarvis-studio-gui/package.json and tauri.conf.json) and
+# this runs the tests, builds the Windows installer (frozen backend with its offline
+# assets, then the Tauri NSIS bundle — scripts/build.ps1) and publishes it as a GitHub
+# release, which the app's update notice (updates.py) then offers. Run it by hand ("Run
+# workflow") for a dry run: same tests and build, the installer as a workflow artifact,
+# no release. The installer isn't code-signed, so Windows SmartScreen will warn.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    env:
+      PUBLISH: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.ENABLE_SIGNED_RELEASE == 'true' }}
+      # Even draft release builds use the same clean FULL offline path.
+      JARVIS_WAKE_PACKAGE_MODE: whisper_local
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: The tag matches the app's version
+        if: env.PUBLISH == 'true'
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME -replace '^v', ''
+          $pkg = (Get-Content jarvis-studio-gui/package.json | ConvertFrom-Json).version
+          $conf = (Get-Content jarvis-studio-gui/src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          if ($pkg -ne $tag -or $conf -ne $tag) {
+            Write-Output "::error::Tag $env:GITHUB_REF_NAME, but package.json says $pkg and tauri.conf.json says $conf. Bump both, then tag."
+            exit 1
+          }
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: jarvis-studio-gui/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+
+      # The same checks as ci.yml, so a tag can't ship what main wouldn't.
+      - name: Backend tests
+        working-directory: jarvis-studio-backend
+        run: |
+          pip install websockets httpx cryptography numpy pyaudio faster-whisper pillow
+          python -m unittest discover -s . -p "test_*.py" -t .
+      - name: Frontend checks
+        working-directory: jarvis-studio-gui
+        run: |
+          npm ci
+          npm run icons
+          npm run lint
+          npm test
+
+      # Technical precondition only; does not itself certify legal rights.
+      # Fail closed when non-commercial built-in hey_jarvis fallback remains,
+      # no owner review is recorded, or approved custom ONNX bytes differ.
+      - name: Verify commercial wake-model rights before public release
+        if: env.PUBLISH == 'true'
+        shell: pwsh
+        env:
+          WAKE_MODEL_COMMERCIAL_RIGHTS_REVIEWED: ${{ vars.WAKE_MODEL_COMMERCIAL_RIGHTS_REVIEWED }}
+          WAKE_MODEL_APPROVED_SHA256: ${{ secrets.WAKE_MODEL_APPROVED_SHA256 }}
+        run: |
+          python jarvis-studio-backend/commercial_wake_release_gate.py
+          if ($LASTEXITCODE -ne 0) {
+            throw "Commercial wake model not cleared: no public release"
+          }
+
+      - name: Build the installer
+        shell: pwsh
+        run: ./scripts/build.ps1
+
+      - name: Audit staged FULL offline assets and exclude restricted wake models
+        shell: pwsh
+        run: |
+          python jarvis-studio-backend/full_offline_bundle_audit.py `
+            --bundle "jarvis-studio-gui/src-tauri/resources/jarvis-backend" `
+            --engine whisper_local `
+            --receipt "$env:RUNNER_TEMP/jarvis-full-asset-preflight.json"
+          if ($LASTEXITCODE -ne 0) { throw "FULL bundle missing assets or contains restricted wake weights" }
+
+      - name: Preserve FULL offline asset preflight receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-full-offline-asset-preflight
+          path: ${{ runner.temp }}/jarvis-full-asset-preflight.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Name it
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem jarvis-studio-gui/src-tauri/target/release/bundle/nsis -Filter *.exe | Select-Object -First 1
+          if (-not $exe) { Write-Output "::error::No installer was produced."; exit 1 }
+          $name = "JARVIS-$($env:GITHUB_REF_NAME -replace '/', '-')-setup.exe"
+          Copy-Item $exe.FullName $name
+          "INSTALLER=$name" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Verify signed release tag belongs to protected main history
+        if: env.PUBLISH == 'true'
+        shell: pwsh
+        run: |
+          git merge-base --is-ancestor $env:GITHUB_SHA origin/main
+          if ($LASTEXITCODE -ne 0) {
+            throw "Refusing to publish installer from a tag not already merged into main"
+          }
+      # PUBLIC publication requires an actual Windows-trusted signer,
+      # identified by a secret thumbprint configured by the repository owner.
+      # Without a signer, only a non-public workflow artifact is produced.
+      - name: Verify pinned Authenticode publisher before public release
+        if: env.PUBLISH == 'true'
+        shell: pwsh
+        env:
+          TRUSTED_SIGNER_THUMBPRINT: ${{ secrets.WINDOWS_SIGNING_CERT_THUMBPRINT }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TRUSTED_SIGNER_THUMBPRINT)) {
+            throw "WINDOWS_SIGNING_CERT_THUMBPRINT missing; no public release"
+          }
+          ./scripts/verify-release-signature.ps1 -InstallerPath $env:INSTALLER `
+              -ExpectedThumbprint $env:TRUSTED_SIGNER_THUMBPRINT `
+              -ReceiptPath "$env:RUNNER_TEMP/jarvis-release-signature-proof.json"
+      # A trusted signature alone says nothing about whether the shipped app
+      # actually opens and its bundled backend authenticates and runs Qwen.
+      # On the exact full (non-Lean) installer selected for public release,
+      # repeat the real Windows installed runtime E2E and refuse to publish
+      # unless both the installer and runtime receipts are positive.
+      - name: Verify installed runtime acceptance before public release
+        if: env.PUBLISH == 'true'
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check websockets==12.0 playwright==1.56.0
+          if ($LASTEXITCODE -ne 0) { throw "Native Windows acceptance dependencies missing" }
+          ./scripts/prepare-installed-ollama.ps1 -InstallerPath $env:INSTALLER
+          $installerPath = Join-Path $env:RUNNER_TEMP "installer-smoke-proof.json"
+          $runtimePath = Join-Path $env:RUNNER_TEMP "jarvis-installed-runtime-proof.json"
+          if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf) -or
+              -not (Test-Path -LiteralPath $runtimePath -PathType Leaf)) {
+            throw "Real installed Windows release acceptance receipts missing"
+          }
+          $installer = Get-Content -LiteralPath $installerPath -Raw | ConvertFrom-Json
+          $runtime = Get-Content -LiteralPath $runtimePath -Raw | ConvertFrom-Json
+          $hash = (Get-FileHash -LiteralPath $env:INSTALLER -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($installer.installer_sha256 -cne $hash -or
+              $installer.success -ne $true -or
+              $installer.installed_runtime_verified -ne $true -or
+              $installer.uninstall_removed_gui -ne $true -or
+              $runtime.success -ne $true -or
+              $runtime.native_authenticated_websocket_verified -ne $true -or
+              $runtime.installed_webview_ui_verified -ne $true -or
+              $runtime.ollama_gguf_tested_in_installed_process -ne $true -or
+              $runtime.review_without_consent_denied -ne $true -or
+              $runtime.wrong_token_rejected -ne $true -or
+              $runtime.forged_gui_origin_without_token_rejected -ne $true -or
+              $runtime.approved_copy_hash_matched -ne $true -or
+              $runtime.exported_reviewed_zip_hash_matched -ne $true -or
+              $runtime.ephemeral_review_rolled_back -ne $true -or
+              $runtime.backend_process_terminated_with_gui -ne $true) {
+            throw "Public release denied: installed Windows runtime evidence invalid or incomplete"
+          }
+          Write-Host "PASS: exact signed installer also passed real installed Windows WebView2/WS/Qwen/rollback/uninstall acceptance."
+
+      - name: Preserve signed release installed-runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-public-release-installed-acceptance
+          path: |
+            ${{ runner.temp }}/installer-smoke-proof.json
+            ${{ runner.temp }}/jarvis-installed-runtime-proof.json
+            ${{ runner.temp }}/jarvis-installed-webview.png
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Preserve signing verification receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-release-signature-verification
+          path: ${{ runner.temp }}/jarvis-release-signature-proof.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Publish the release
+        if: env.PUBLISH == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.INSTALLER }}
+          generate_release_notes: true
+
+      - name: Keep the dry run's installer
+        if: env.PUBLISH != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-installer
+          path: ${{ env.INSTALLER }}

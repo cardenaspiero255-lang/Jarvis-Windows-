@@ -1,0 +1,82 @@
+name: Windows Synthetic Hey Jarvis Stress (Real Models)
+
+on:
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'jarvis-studio-backend/synthetic_wake_stress.py'
+      - 'jarvis-studio-backend/test_synthetic_wake_stress.py'
+      - 'scripts/windows-synthetic-wake-stress.ps1'
+      - '.github/workflows/synthetic-wake-stress-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-smoke-real-verifier:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install real openWakeWord and local Whisper models
+        run: python -m pip install --disable-pip-version-check openwakeword==0.6.0 onnxruntime pyaudio==0.2.14 numpy faster-whisper
+      - name: Real Windows SAPI 24-condition diagnostic incl second-stage Whisper
+        shell: pwsh
+        run: ./scripts/windows-synthetic-wake-stress.ps1 -Profile smoke -WithWhisper -CompareUnprompted
+      - name: Preserve metrics only, never synthesized PCM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-synthetic-wake-24-stress-metrics
+          path: ${{ runner.temp }}/jarvis-synthetic-wake-receipt.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  synthetic-campaign-240:
+    runs-on: windows-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install real local wake model dependencies
+        run: python -m pip install --disable-pip-version-check openwakeword==0.6.0 onnxruntime pyaudio==0.2.14 numpy
+      - name: Score 240 Windows SAPI acoustic conditions on actual ONNX model
+        shell: pwsh
+        run: ./scripts/windows-synthetic-wake-stress.ps1 -Profile campaign
+      - name: Preserve first-stage scores only, never generated PCM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-synthetic-wake-240-stress-metrics
+          path: ${{ runner.temp }}/jarvis-synthetic-wake-receipt.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  
+  independent-novel-phrases:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install real wake and speech-to-text inference
+        run: python -m pip install --disable-pip-version-check openwakeword==0.6.0 onnxruntime pyaudio==0.2.14 numpy faster-whisper
+      - name: Evaluate frozen 48 unseen synthetic acoustic conditions with both Whisper prompts
+        shell: pwsh
+        run: ./scripts/windows-synthetic-wake-stress.ps1 -Profile independent -WithWhisper -CompareUnprompted
+      - name: Preserve novel-phrase metrics only, no PCM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-synthetic-wake-novel-48-metrics
+          path: ${{ runner.temp }}/jarvis-synthetic-wake-receipt.json
+          if-no-files-found: warn
+          retention-days: 14

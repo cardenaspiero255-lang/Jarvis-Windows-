@@ -1,0 +1,66 @@
+name: Blind Human Hard Wake Comparison (Windows)
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  development:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install real wake and local Whisper engines
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check openwakeword==0.6.0 onnxruntime pyaudio==0.2.14 numpy scipy soundfile faster-whisper
+          if ($LASTEXITCODE -ne 0) { throw "Real-model dependency setup failed" }
+      - name: Measure pre-frozen development negatives (no tuning)
+        shell: pwsh
+        run: |
+          python ./jarvis-studio-backend/windows_hard_wake_compare.py --split development
+          if ($LASTEXITCODE -ne 0) { throw "Hard wake development comparison failed" }
+      - name: Preserve development provenance and per-case decisions, no audio
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-hard-human-negatives-development
+          path: ${{ runner.temp }}/jarvis-hard-voice-development.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  holdout:
+    needs: development
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install frozen real wake and local Whisper engines
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check openwakeword==0.6.0 onnxruntime pyaudio==0.2.14 numpy scipy soundfile faster-whisper
+          if ($LASTEXITCODE -ne 0) { throw "Real-model dependency setup failed" }
+      - name: One-pass frozen hard-negative HOLDOUT (do not refit from results)
+        shell: pwsh
+        run: |
+          python ./jarvis-studio-backend/windows_hard_wake_compare.py --split holdout
+          if ($LASTEXITCODE -ne 0) { throw "Blind holdout comparison failed" }
+      - name: Preserve holdout evaluation receipt, never external audio
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-hard-human-negatives-holdout
+          path: ${{ runner.temp }}/jarvis-hard-voice-holdout.json
+          if-no-files-found: warn
+          retention-days: 14
