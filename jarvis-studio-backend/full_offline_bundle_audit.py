@@ -13,8 +13,17 @@ from pathlib import Path
 ENGINE = "whisper_local"
 VOICE = "en_US-john-medium"
 
+# Published by the corresponding upstream model file pages on Hugging Face.
+# A model change requires a reviewed new digest, not just a renamed file.
+REVIEWED_MODEL_SHA256 = {
+    "preload-assets/whisper-base/model.bin":
+        "d01c3014881c9c6f3133c182f3d2887eb6ca1c789a7538c5c007196857a0a6a9",
+    "preload-assets/piper/en_US-john-medium.onnx":
+        "789c6c875726e627ddee93d51d8727859abe9c091c3d141591f4b83c2072e988",
+}
 
-def audit_full_bundle(root: Path, *, engine: str) -> dict:
+
+def audit_full_bundle(root: Path, *, engine: str, enforce_model_pins: bool = False) -> dict:
     root = Path(root).resolve()
     blockers = []
     hashes = {}
@@ -69,6 +78,14 @@ def audit_full_bundle(root: Path, *, engine: str) -> dict:
     if forbidden:
         blockers.append("restricted_openwakeword_assets_present")
 
+    if enforce_model_pins:
+        for asset, expected in REVIEWED_MODEL_SHA256.items():
+            if hashes.get(asset) != expected:
+                blockers.append(
+                    "whisper_model_hash_mismatch" if "whisper-base" in asset
+                    else "piper_voice_hash_mismatch"
+                )
+
     return {
         "schema": "jarvis-full-offline-asset-preflight-v1",
         "status": "FULL_ASSETS_PRESENT_NOT_CERTIFIED" if not blockers else "BLOCKED",
@@ -89,7 +106,7 @@ def main() -> int:
     parser.add_argument("--engine", default=ENGINE)
     parser.add_argument("--receipt", required=True, type=Path)
     args = parser.parse_args()
-    result = audit_full_bundle(args.bundle, engine=args.engine)
+    result = audit_full_bundle(args.bundle, engine=args.engine, enforce_model_pins=True)
     args.receipt.parent.mkdir(parents=True, exist_ok=True)
     args.receipt.write_text(json.dumps(result, indent=2, sort_keys=True), "utf-8")
     print("JARVIS_FULL_ASSET_PREFLIGHT=" + json.dumps({
