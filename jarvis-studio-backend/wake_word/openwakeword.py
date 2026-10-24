@@ -104,7 +104,14 @@ class BuiltinInference:
 
 
 def _build_recognizer():
-    """Pick the custom model if its file exists, else the built-in fallback."""
+    """Select opt-in local Whisper or the historical DEVELOPMENT-only OWW backend."""
+    engine = os.environ.get("JARVIS_WAKE_ENGINE", "openwakeword_development")
+    if engine == "whisper_local":
+        # No fallback to CC BY-NC-SA pretrained openWakeWord model weights.
+        from wake_word.whisper_local_wake import LocalWhisperWake
+        return LocalWhisperWake()
+    if engine != "openwakeword_development":
+        raise RuntimeError("unsupported_wake_engine")
     if _CUSTOM_MODEL_PATH.exists():
         try:
             rec = CustomInference(str(_CUSTOM_MODEL_PATH))
