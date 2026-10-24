@@ -19,6 +19,11 @@ class CommercialWakeGateTests(unittest.TestCase):
         self.model.parent.mkdir(parents=True)
         self.model.write_bytes(b"permissively-licensed-test-model" * 5000)
         self.sha = hashlib.sha256(self.model.read_bytes()).hexdigest()
+        self.spec = self.root / "jarvis-studio-backend/jarvis-backend.spec"
+        self.package = self.root / "scripts/package-backend.ps1"
+        self.package.parent.mkdir(parents=True, exist_ok=True)
+        self.spec.write_text("datas = []\n", encoding="utf-8")
+        self.package.write_text("# approved custom model packager\n", encoding="utf-8")
         self.source.write_text("def _build_recognizer():\n    return CustomInference('model')\n", encoding="utf-8")
 
     def test_current_builtin_fallback_blocks_even_with_attestation_and_hash(self):
@@ -54,6 +59,28 @@ class CommercialWakeGateTests(unittest.TestCase):
         with patch.object(Path, "is_symlink", autospec=True, side_effect=lambda path: path == self.model):
             self.assertIn("approved_model_missing", check_commercial_wake_release(
                 self.root, rights_reviewed="true", expected_sha256=self.sha)["blockers"])
+
+
+    def test_pretrained_model_packaging_is_blocked_even_if_runtime_custom_model_is_approved(self):
+        self.spec.write_text('datas += collect_data_files("openwakeword")\n')
+        out = check_commercial_wake_release(
+            self.root, rights_reviewed="true", expected_sha256=self.sha)
+        self.assertIn("noncommercial_openwakeword_data_packaged", out["blockers"])
+
+        self.spec.write_text("datas = []\n")
+        self.package.write_text('& $python -c "import openwakeword.utils as u; u.download_models()"\n')
+        out = check_commercial_wake_release(
+            self.root, rights_reviewed="true", expected_sha256=self.sha)
+        self.assertIn("pretrained_openwakeword_weights_downloaded", out["blockers"])
+
+    def test_packaging_source_files_mandatory_to_prevent_fake_precheck_pass(self):
+        self.spec.unlink()
+        self.assertIn("pyinstaller_spec_missing", check_commercial_wake_release(
+            self.root, rights_reviewed="true", expected_sha256=self.sha)["blockers"])
+        self.spec.write_text("datas = []\n")
+        self.package.unlink()
+        self.assertIn("backend_packager_missing", check_commercial_wake_release(
+            self.root, rights_reviewed="true", expected_sha256=self.sha)["blockers"])
 
     def test_release_workflow_must_check_before_publication(self):
         root = Path(__file__).resolve().parent.parent
