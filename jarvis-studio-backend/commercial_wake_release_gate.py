@@ -18,11 +18,55 @@ _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
 
 def check_commercial_wake_release(project_root: Path, *, rights_reviewed: str,
-                                  expected_sha256: str) -> dict:
+                                  expected_sha256: str,
+                                  package_engine: str = "legacy_oww") -> dict:
     root = Path(project_root)
     runtime = root / "jarvis-studio-backend/wake_word/openwakeword.py"
     model = root / "jarvis-studio-backend/wake_word/models/hey_jarvis.onnx"
     blockers = []
+
+    if package_engine == "whisper_local":
+        # A clean audio-to-text route can use the separately licensed MIT
+        # Whisper model without shipping the noncommercial OWW wake weights.
+        # Release workflow must still audit the actual FULL package AFTER build.
+        hook = root / "jarvis-studio-backend/wake_word/frozen_engine_runtime.py"
+        spec = root / "jarvis-studio-backend/jarvis-backend.spec"
+        packager = root / "scripts/package-backend.ps1"
+        if runtime.is_symlink() or not runtime.is_file() or (
+            'engine == "whisper_local"' not in runtime.read_text("utf-8")
+            or "LocalWhisperWake" not in runtime.read_text("utf-8")
+        ):
+            blockers.append("clean_whisper_runtime_missing")
+        if hook.is_symlink() or not hook.is_file() or (
+            'os.environ["JARVIS_WAKE_ENGINE"] = "whisper_local"'
+            not in hook.read_text("utf-8")
+        ):
+            blockers.append("frozen_whisper_hook_missing")
+        if spec.is_symlink() or not spec.is_file() or not all(
+            term in spec.read_text("utf-8")
+            for term in ("JARVIS_WAKE_PACKAGE_MODE", "runtime_hooks=",
+                         "if not clean_wake_bundle:", 'excludes.append("openwakeword")')
+        ):
+            blockers.append("clean_whisper_spec_missing")
+        if packager.is_symlink() or not packager.is_file() or not all(
+            term in packager.read_text("utf-8")
+            for term in ("JARVIS_WAKE_PACKAGE_MODE", '"whisper_local"',
+                         "download_models()", "} else {")
+        ):
+            blockers.append("clean_whisper_packager_guard_missing")
+        if rights_reviewed != "true":
+            blockers.append("commercial_rights_not_reviewed")
+        return {
+            "status": ("NOT_CERTIFIED" if blockers
+                       else "COMMERCIAL_WAKE_TECHNICAL_PRECHECK_PASS"),
+            "blockers": sorted(set(blockers)),
+            "package_engine": package_engine,
+            "legal_rights_certified": False,
+            "installed_model_certified": False,
+            "human_wake_performance_certified": False,
+        }
+    if package_engine != "legacy_oww":
+        blockers.append("unsupported_package_engine")
 
     # The built-in fallback uses non-commercial pretrained weights. Even a
     # licensed custom model must not silently fall back to these weights.
@@ -81,6 +125,7 @@ def main() -> int:
         Path(__file__).resolve().parent.parent,
         rights_reviewed=os.environ.get("WAKE_MODEL_COMMERCIAL_RIGHTS_REVIEWED", ""),
         expected_sha256=os.environ.get("WAKE_MODEL_APPROVED_SHA256", ""),
+        package_engine=os.environ.get("JARVIS_WAKE_PACKAGE_MODE", "legacy_oww"),
     )
     print("COMMERCIAL_WAKE_RELEASE_PRECHECK=" + json.dumps(report, sort_keys=True))
     return 0 if report["status"] == "COMMERCIAL_WAKE_TECHNICAL_PRECHECK_PASS" else 1
